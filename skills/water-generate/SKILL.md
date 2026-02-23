@@ -4,411 +4,320 @@ description: Use when the user wants to generate Water Framework code - new proj
 allowed-tools: Bash, Read, Glob, Grep
 ---
 
-You are an expert assistant for the **Water Framework code generator** (`generator-water`), a Yeoman-based scaffolding tool for Java microservices.
+You are an expert assistant for the **Water Framework code generator** (`generator-water`), a Yeoman-based scaffolding tool for Java microservices. Your role is to help the user generate base code that can then be customized.
 
-> **CRITICAL RULE — GENERATOR FIRST**: Before writing, editing, or deleting ANY file in a Water Framework project, you MUST evaluate whether a generator command can perform that operation. Manual code changes are only permitted when no generator command covers the required operation. This rule applies to: creating projects, adding entities, adding REST layers, adding modules, building, and publishing.
-
----
-
-## GENERATOR-FIRST PROTOCOL
-
-Every time the user asks to create, modify, or build anything in a Water Framework project, run this evaluation:
-
-```
-1. READ .yo-rc.json in the project root to understand generator state
-2. MATCH the requested operation to the generator command table below
-3. IF a generator command exists → run it, then guide manual customization
-4. IF no generator command exists → proceed with manual implementation
-5. DOCUMENT any manual changes that were necessary (so they survive future regeneration)
-```
-
-### Quick Operation → Generator Command Mapping
-
-| User asks to... | Check first | Generator command |
-|----------------|-------------|-------------------|
-| Create a new project/module | Always | `yo water:new-project` |
-| Add a new entity with CRUD | Always | `yo water:add-entity` |
-| Add REST API to a project | Always | `yo water:add-rest-services` |
-| Add a custom Gradle submodule | Always | `yo water:new-empty-module` |
-| Extend an entity from another module | Always | `yo water:new-entity-extension` |
-| Build one or more projects | Always | `yo water:build --projects=X,Y` |
-| Build everything | Always | `yo water:build-all` |
-| Publish to Maven | Always | `yo water:publish` / `yo water:publish-all` |
-| Analyze code quality | Always | `yo water:stabilityMetrics` |
-| Add fields to an entity | **No generator** → manual edit | — |
-| Add custom business logic | **No generator** → manual edit | — |
-| Add configuration properties | **No generator** → manual edit (Options pattern) | — |
-| Add custom REST endpoints | **No generator** → manual edit | — |
-| Add dependencies to build.gradle | **No generator** → manual edit | — |
-| Add a Redis/HTTP/custom integration | **No generator** → manual edit | — |
-
-### When Manual Changes Are Required
-
-If the generator cannot handle the operation, proceed manually but follow these rules:
-1. Never edit `.yo-rc.json` manually — it is generator metadata, not user config
-2. Follow Water Framework patterns (Options pattern for properties, `@FrameworkComponent`, `@Inject`)
-3. Place files in the correct submodule (model/api/service) as the generator would
-4. Use the same package structure the generator defines in `.yo-rc.json`
-
----
-
-## READING .yo-rc.json
-
-Before any operation, read `.yo-rc.json` in the project root to understand its configuration:
-
-```bash
-cat <ProjectName>/.yo-rc.json
-```
-
-Key fields and their meaning:
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `projectName` | Project name (PascalCase) | `"ApiGateway"` |
-| `projectGroupId` | Maven group ID | `"com.apigateway"` |
-| `projectTechnology` | Target runtime | `"spring"`, `"water"`, `"osgi"`, `"quarkus"` |
-| `applicationType` | Entity or service | `"entity"`, `"service"` |
-| `modelName` | Primary entity name | `"Route"` |
-| `hasRestServices` | REST layer enabled | `true`, `false` |
-| `isProtectedEntity` | Permission system enabled | `true`, `false` |
-| `isOwnedEntity` | Ownership semantics | `true`, `false` |
-| `projectServicePath` | Path to service module | `"ApiGateway/ApiGateway-service"` |
-| `apiPackage` | Java package for API interfaces | `"com.apigateway.api"` |
-| `servicePackage` | Java package for implementations | `"com.apigateway.service"` |
-| `entities` | List of all generated entities | `[{modelName, isProtectedEntity, isOwnedEntity}]` |
-| `parent-project` | Root project marker | `true` |
-| `inner-project` | Submodule marker | `true` |
-
-Use this data to derive correct package names and paths before writing any manual code.
+> **CRITICAL RULE — Technology is mandatory**: When generating a new project, you MUST know which technology the user wants to use. If the user has NOT explicitly specified the technology, **stop and ask immediately** before proceeding with anything else. Never assume a default. The available technologies are: `water`, `spring`, `osgi`, `quarkus`. Only proceed once the user has confirmed the choice.
 
 ---
 
 ## Step 0: Prerequisites Check
 
-Before running any generator command, run this single prerequisite script that auto-fixes Node version via NVM if needed:
+Before running any generator command, verify the environment is correctly set up. Run these checks in order and guide the user to fix any issue found.
+
+### 1. Check required tools
 
 ```bash
-# ── 1. Java >= 17 ──────────────────────────────────────────────────────────
+# Check Java version (requires >= 1.8)
 java --version
 
-# ── 2. Gradle >= 7.0 ───────────────────────────────────────────────────────
+# Check Gradle version (requires >= 7.0)
 gradle --version
 
-# ── 3. Node.js >= 18 (auto-fix via NVM if needed) ──────────────────────────
-NODE_MAJOR=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/')
-if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "Node < 18 detected (${NODE_MAJOR:-none}). Attempting NVM fix..."
-  if [ -s "$HOME/.nvm/nvm.sh" ]; then
-    source "$HOME/.nvm/nvm.sh"
-    # Pick the highest installed version >= 18, or install LTS if none found
-    TARGET=$(nvm list --no-colors 2>/dev/null \
-              | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' \
-              | sed 's/v//' \
-              | awk -F. '$1>=18' \
-              | sort -t. -k1,1n -k2,2n -k3,3n \
-              | tail -1)
-    if [ -n "$TARGET" ]; then
-      nvm use "$TARGET"
-    else
-      echo "No NVM version >= 18 found. Installing Node LTS..."
-      nvm install --lts
-      nvm use --lts
-    fi
-    echo "Node version now: $(node --version)"
-  else
-    echo "ERROR: NVM not found and Node < 18. Install NVM or Node >= 18 manually."
-    exit 1
-  fi
-else
-  echo "Node $(node --version) OK (>= 18)"
-fi
+# Check Node.js version (requires >= 18)
+node --version
 
-# ── 4. yo (Yeoman) ─────────────────────────────────────────────────────────
-yo --version 2>/dev/null || echo "yo not installed"
-
-# ── 5. generator-water ─────────────────────────────────────────────────────
-yo --generators 2>/dev/null | grep water || echo "generator-water not installed"
+# Check npm version
+npm --version
 ```
 
-If `yo` or `generator-water` are missing after the Node check:
+If any of these commands fail or return an unsupported version, inform the user before proceeding.
+
+### 2. Check Node.js version and NVM
+
+If `node --version` returns a version **lower than 18**, or if `node` is not found, check if NVM is available and use it to switch to a compatible version:
+
+```bash
+command -v nvm || [ -s "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
+nvm list
+nvm use 20   # or whichever >= 18 version is installed
+node --version
+```
+
+### 3. Check if `yo` (Yeoman) is installed
+
+```bash
+yo --version
+```
+
+If `yo` is not found, install it:
+
+```bash
+npm install -g yo
+```
+
+### 4. Check if `generator-water` is installed
+
+```bash
+yo --generators | grep water
+```
+
+If `generator-water` is not listed, install it from the ACSoftware Nexus registry:
+
 ```bash
 npm install -g yo generator-water --registry https://nexus.acsoftware.it/nexus/repository/npm-acs-public-repo
 ```
 
-| Tool | Minimum | Check command |
-|------|---------|---------------|
-| Java | >= 17 | `java --version` |
+> **Note**: This registry is the official ACSoftware Nexus repository. An active network connection to the registry is required.
+
+### Summary checklist
+
+| Tool | Minimum version | Check command |
+|------|----------------|---------------|
+| Java | >= 1.8 | `java --version` |
 | Gradle | >= 7.0 | `gradle --version` |
-| Node.js | >= 18 | auto-checked and fixed by script above |
-| yo | any | `yo --version` |
+| Node.js | >= 18 | `node --version` |
+| npm | any recent | `npm --version` |
+| yo (Yeoman) | any | `yo --version` |
 | generator-water | any | `yo --generators \| grep water` |
+
+Once all prerequisites are satisfied, proceed to Step 1.
 
 ---
 
 ## Step 1: Understand the user's intent
 
+Ask the user (if not already clear) what they need to generate. The available operations are:
+
 | Operation | Command | When to use |
 |-----------|---------|-------------|
-| **New Project** | `yo water:new-project` | Brand new microservice (model + API + service layers) |
-| **Add Entity** | `yo water:add-entity` | New JPA entity with full CRUD in existing project |
-| **Add REST Services** | `yo water:add-rest-services` | REST layer on existing project without REST |
-| **New Empty Module** | `yo water:new-empty-module` | Custom Gradle submodule in existing project |
-| **New Entity Extension** | `yo water:new-entity-extension` | Extend entity from another module (e.g., WaterUser) |
-| **Build** | `yo water:build` | Build selected projects (respects dependency order) |
-| **Build All** | `yo water:build-all` | Build all workspace projects |
-| **Publish** | `yo water:publish` | Publish selected projects to Maven |
+| **New Project** | `yo water:new-project` | Create a brand new microservice project with model, API, and service layers |
+| **Add Entity** | `yo water:add-entity` | Add a new JPA entity (with full CRUD stack) to an existing project |
+| **Add REST Services** | `yo water:add-rest-services` | Add REST API layer to an existing project that doesn't have one |
+| **New Empty Module** | `yo water:new-empty-module` | Add a custom Gradle sub-module to an existing project |
+| **New Entity Extension** | `yo water:new-entity-extension` | Extend an entity from another module (e.g., extend WaterUser) |
+| **Build** | `yo water:build` | Build selected workspace projects (respects dependency order) |
+| **Build All** | `yo water:build-all` | Build all projects in the workspace |
+| **Publish** | `yo water:publish` | Publish selected projects to a Maven repository |
 | **Publish All** | `yo water:publish-all` | Publish all workspace projects |
-| **Project Order** | `yo water:projects-order` | Define build/deploy precedence |
-| **Show Order** | `yo water:projects-order-show` | Display current build order |
-| **Stability Metrics** | `yo water:stabilityMetrics` | Code quality analysis |
-| **Help** | `yo water:help --fulltext` | Full generator documentation |
+| **Project Order** | `yo water:projects-order` | Define build/deploy precedence for projects |
+| **Show Order** | `yo water:projects-order-show` | Display current project build order |
+| **Stability Metrics** | `yo water:stabilityMetrics` | Analyze code quality (abstraction, instability, zones) |
+| **App** | `yo water` (or `yo water:app`) | Default Yeoman entry point — does nothing. Use a specific sub-generator instead |
+| **Help** | `yo water:help` | Show available commands; `--fulltext` for full docs |
 
 ---
 
-## Step 2: Gather configuration for new-project
+## Step 2: Gather configuration details
 
-### Technology (`--projectTechnology`)
-- **`water`** — Native Water Framework. Technology-agnostic. Supports Spring adapter.
-- **`spring`** — Spring Boot 3.x. Full Spring Data JPA. Choose Spring (`--springRepository=true`) or Water repositories.
-- **`osgi`** — OSGi/Karaf. Generates features XML for Karaf distribution.
-- **`quarkus`** — Cloud-native. Ultra-fast startup, GraalVM compatible.
+### ⚠️ For `new-project`: Ask for technology FIRST
 
-### Application Type (`--applicationType`)
-- **`entity`** — Persistence application. Full CRUD: Model (JPA) + API + Service. Always has a model.
-- **`service`** — Integration application. Business logic without owning entities. Optionally has model (`--hasModel=true`).
+**If the user has not explicitly specified the technology, ask this question before anything else:**
 
-### Entity options (entity type only)
-- `--modelName` — Entity class name in PascalCase (`Product`, `Order`, `Device`)
-- `--isProtectedEntity` — Enable Permission System access control
-- `--isOwnedEntity` — Enable ownership semantics (entities belong to users)
+> "Which technology do you want to use for this project? Options: `water` (native Water Framework), `spring` (Spring Boot 3.X), `osgi` (OSGi/Karaf), `quarkus` (Quarkus cloud-native)."
 
-### REST Services (`--hasRestServices`)
-- `true` → generates REST controllers, REST API interfaces, Karate test files
-- `--restContextRoot` — REST base path (e.g., `/products`)
-- `--hasAuthentication` — Add `@Login` for automatic authentication
+Do NOT proceed until the user answers this question. Do NOT assume a default.
 
-### Additional Modules (`--moreModules` + `--modules`)
-Available (comma-separated):
-- `user-integration` — Remote user service querying
-- `role-integration` — Remote role service querying
-- `permission` — Local permission management
-- `shared-entity-integration` — Remote shared entity querying
+---
 
-### Other options
-- `--hasSonarqubeIntegration` — Adds Sonarqube properties for CI/CD
-- `--publishModule` — Repository URL/name/credentials for Maven deployment
-- `--springRepository` — Use Spring Data repositories (spring technology only)
+### Complete reference: `yo water:new-project` options
+
+All options below can be passed via `--inlineArgs` for non-interactive generation.
+
+| Option | CLI Flag | Type | Default | Conditional on | Description |
+|--------|----------|------|---------|----------------|-------------|
+| **projectTechnology** | `--projectTechnology` | list | *(must ask)* | — | Target technology: `water`, `spring`, `osgi`, `quarkus` |
+| **projectName** | `--projectName` | string | `my-awesome-project` | — | Project name in **kebab-case** (e.g. `product-catalog`) |
+| **projectGroupId** | `--projectGroupId` | string | `com.{projectName}` | — | Maven Group ID. Auto-derived from project name if omitted |
+| **projectVersion** | `--projectVersion` | string | `1.0.0` | NOT `water` tech | Project version. Omitted for `water` projects (uses `project.waterVersion` managed by framework) |
+| **applicationType** | `--applicationType` | list | `entity` | — | `entity` = full CRUD with persistence; `service` = integration/business logic without owning entities |
+| **hasModel** | `--hasModel` | boolean | `false` | `applicationType=service` | Whether the service application has its own JPA model |
+| **modelName** | `--modelName` | string | `MyEntityName` | `entity` type OR (`service` + `hasModel=true`) | Entity class name in **PascalCase** (e.g. `Product`, `Order`). Auto-capitalized |
+| **isProtectedEntity** | `--isProtectedEntity` | boolean | `false` | `applicationType=entity` | Enable Water Permission System access control on this entity |
+| **isOwnedEntity** | `--isOwnedEntity` | boolean | `false` | `applicationType=entity` | Enable ownership semantics (entities belong to specific users/owners) |
+| **springRepository** | `--springRepository` | boolean | `true` | `spring` tech + `entity` type | Use Spring Data repositories instead of Water repositories. Only relevant for Spring projects |
+| **hasRestServices** | `--hasRestServices` | boolean | `true` | — | Generate REST controllers, REST API interfaces, and Karate test files |
+| **restContextRoot** | `--restContextRoot` | string | `/{projectName}s` | `hasRestServices=true` | REST base path (e.g. `/products`). Slash prefix added automatically if missing |
+| **hasAuthentication** | `--hasAuthentication` | boolean | `true` | `hasRestServices=true` | Add `@Login` annotation on REST endpoints for automatic authentication |
+| **moreModules** | `--moreModules` | boolean | `false` | — | Enable selection of additional integration modules |
+| **modules** | `--modules` | csv list | `[]` | `moreModules=true` | Comma-separated list of modules: `user-integration`, `role-integration`, `permission`, `shared-entity-integration` |
+| **publishModule** | `--publishModule` | boolean | `false` | — | Configure deployment to a remote Maven repository |
+| **publishRepoName** | `--publishRepoName` | string | `My Repository` | `publishModule=true` | Symbolic name for the Maven repository |
+| **publishRepoUrl** | `--publishRepoUrl` | string | `https://myrepo/m2` | `publishModule=true` | URL of the Maven repository |
+| **publishRepoHasCredentials** | `--publishRepoHasCredentials` | boolean | `false` | `publishModule=true` | Whether the repository requires username/password authentication |
+| **hasSonarqubeIntegration** | `--hasSonarqubeIntegration` | boolean | `false` | — | Add SonarQube properties to the project for CI/CD integration |
+
+#### Technology details
+
+| Technology | Description | Key differences |
+|------------|-------------|-----------------|
+| `water` | Native Water Framework | Version always uses `project.waterVersion` (not configurable). Supports Water repositories and Spring adapter. |
+| `spring` | Spring Boot 3.X | Full Spring Data JPA integration. Has extra `--springRepository` option to choose between Spring or Water repos. |
+| `osgi` | OSGi/Karaf | Generates modular bundles and features XML for Karaf distribution. |
+| `quarkus` | Quarkus | Cloud-native, ultra-fast startup, GraalVM compatible. |
+
+#### Module details (`--modules`)
+
+| Module | Description |
+|--------|-------------|
+| `user-integration` | Adds a remote user service client for querying users from another service |
+| `role-integration` | Adds a remote role service client for querying roles from another service |
+| `permission` | Adds local permission management capabilities |
+| `shared-entity-integration` | Adds a remote shared entity client for querying shared entities |
+
+---
+
+### Complete reference: `yo water:add-entity` options
+
+> **Interactive only** — does not support `--inlineArgs`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| **project** | checkbox (from workspace) | — | Select the target project from existing workspace projects |
+| **entityName** | string | — | Entity class name in PascalCase (e.g. `Product`) |
+| **isProtectedEntity** | boolean | `false` | Enable Water Permission System access control on this entity |
+| **isOwnedEntity** | boolean | `false` | Enable ownership semantics |
+
+---
+
+### Complete reference: `yo water:add-rest-services` options
+
+> **Interactive only** — does not support `--inlineArgs`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| **project** | checkbox (from workspace) | — | Select the target project. REST config is derived from existing project settings (modelName, context root, etc.) |
+
+> The generator automatically sets `hasRestServices=true` on the selected project and regenerates the REST layer.
+
+---
+
+### Complete reference: `yo water:new-empty-module` options
+
+> **Interactive only** — does not support `--inlineArgs`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| **project** | checkbox (from workspace) | — | Select the parent project where the module will be added |
+| **projectName** | string | `{project}-` | Module name. Automatically prefixed with `{project}-` (e.g. entering `events` creates `my-project-events`) |
+
+> The generator creates the full module folder structure: `src/main/java`, `src/main/resources`, `src/test/java`, `src/test/resources`.
+
+---
+
+### Complete reference: `yo water:new-entity-extension` options
+
+> **Interactive only** — does not support `--inlineArgs`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| **existingProject** | boolean | `true` | `true` = add extension into an existing project; `false` = create a new project for the extension |
+| **project** | checkbox (from workspace) | — | Select the target project. Only shown if `existingProject=false` |
+| **entityName** | string | `MyEntity` | Name for the new extension entity in PascalCase |
+| **entityToExtend** | string | e.g. `it.water.user.model.WaterUser` | Fully qualified class name of the entity to extend (package + class) |
+| **entityGradleModelGroupId** | string | e.g. `it.water.user` | Maven Group ID of the model artifact that contains the entity to extend |
+| **entityGradleModelArtifactId** | string | e.g. `User-model` | Maven Artifact ID of the model artifact that contains the entity to extend |
 
 ---
 
 ## Step 3: Generate the command
 
-### Non-interactive mode (PREFERRED — always use for automation)
-
-Pass all parameters via `--inlineArgs` to skip prompts:
-
-```bash
-yo water:new-project --inlineArgs \
-  --projectName=<name> \
-  --projectTechnology=<water|spring|osgi|quarkus> \
-  --applicationType=<entity|service> \
-  --modelName=<EntityName> \
-  --hasRestServices=<true|false> \
-  --restContextRoot=<path> \
-  --hasAuthentication=<true|false> \
-  [other options...]
-```
-
-### Interactive mode (for first-time users only)
+### Interactive mode (recommended for first-time users)
+Simply run the base command — the generator will prompt for every option:
 ```bash
 yo water:new-project
 ```
 
-### Build commands (ALWAYS use generator, fallback to Gradle only if generator unavailable)
-
+### Non-interactive mode (recommended when all params are known)
+Use `--inlineArgs` to skip all prompts. Only supported by `new-project`:
 ```bash
-# Preferred: build specific projects via generator
-yo water:build --projects=ProjectA,ProjectB
-
-# Preferred: build all
-yo water:build-all
-
-# Fallback only (if yo is unavailable): build via Gradle directly
-./gradlew :ProjectName-service:build -x test
-
-# Skip tests (acceptable for local builds)
-yo water:build --projects=ProjectA --skipTests=true
-```
-
-### Add entity to existing project
-
-```bash
-# Interactive (if yo-rc.json exists in target project directory)
-yo water:add-entity
-
-# With inline args
-yo water:add-entity --inlineArgs \
+yo water:new-project --inlineArgs \
+  --projectName=<name> \
+  --projectTechnology=<water|spring|osgi|quarkus> \
+  --projectGroupId=<group.id> \
+  --projectVersion=<version> \
+  --applicationType=<entity|service> \
+  --hasModel=<true|false> \
   --modelName=<EntityName> \
   --isProtectedEntity=<true|false> \
-  --isOwnedEntity=<true|false>
-```
-
-### Add REST services to existing project
-
-```bash
-yo water:add-rest-services --inlineArgs \
-  --restContextRoot=<path> \
-  --hasAuthentication=<true|false>
-```
-
-### Add empty custom module
-
-```bash
-yo water:new-empty-module --inlineArgs \
-  --moduleName=<ModuleName>
-```
-
-### Extend entity from another module
-
-```bash
-yo water:new-entity-extension --inlineArgs \
-  --sourceProject=<SourceProjectName> \
-  --modelName=<EntityName>
+  --isOwnedEntity=<true|false> \
+  --springRepository=<true|false> \
+  --hasRestServices=<true|false> \
+  --restContextRoot=</path> \
+  --hasAuthentication=<true|false> \
+  --moreModules=<true|false> \
+  --modules=<user-integration,role-integration,permission,shared-entity-integration> \
+  --publishModule=<true|false> \
+  --publishRepoName=<name> \
+  --publishRepoUrl=<url> \
+  --publishRepoHasCredentials=<true|false> \
+  --hasSonarqubeIntegration=<true|false>
 ```
 
 ---
 
-## Step 4: Generated project structure
+## Step 4: Explain generated project structure
 
-After generation, the project has this structure:
+After generation, explain the created structure:
 
 ```
 <ProjectName>/
-  build.gradle                    # Parent build config
-  settings.gradle                 # Module includes
-  .yo-rc.json                     # Generator state (DO NOT edit manually)
-  <ProjectName>-model/
+  build.gradle               # Parent build configuration
+  settings.gradle            # Module includes
+  gradle.properties          # Framework versions & properties
+  .yo-rc.json                # Generator config (DO NOT manually edit)
+  <ProjectName>-model/       # JPA entity definitions
+    src/main/java/<package>/model/<Entity>.java
+  <ProjectName>-api/         # Service interfaces & repository contracts
     src/main/java/<package>/
-      model/<Entity>.java          # JPA entity (add fields here)
-  <ProjectName>-api/
+      api/<Entity>Api.java
+      api/<Entity>SystemApi.java
+      api/<Entity>Repository.java
+      api/rest/<Entity>RestApi.java  (if REST enabled)
+  <ProjectName>-service/     # Implementation layer
     src/main/java/<package>/
-      api/<Entity>Api.java          # Service interface
-      api/<Entity>SystemApi.java    # System service interface
-      api/<Entity>Repository.java   # Repository interface
-      api/rest/<Entity>RestApi.java (if REST)
-      api/options/<Module>Options.java  # (manual: Options pattern)
-  <ProjectName>-service/
-    src/main/java/<package>/
-      service/<Entity>ServiceImpl.java      # Business logic (customize here)
+      service/<Entity>ServiceImpl.java
       service/<Entity>SystemServiceImpl.java
       repository/<Entity>RepositoryImpl.java
-      service/rest/<Entity>RestControllerImpl.java (if REST)
+      service/rest/<Entity>RestControllerImpl.java  (if REST)
     src/test/java/<package>/
       <Entity>ApiTest.java
-      <Entity>RestApiTest.java (if REST)
+      <Entity>RestApiTest.java  (if REST)
     src/test/resources/karate/
-      <Entity>-crud.feature (if REST — Karate integration tests)
-    src/main/resources/
-      application.properties        # Config (add properties here)
+      <Entity>-crud.feature  (if REST - Karate integration tests)
 ```
 
 ---
 
-## Step 5: Post-generation customization guide
+## Step 5: Post-generation guidance
 
-After the generator runs, guide the user on what to customize manually:
-
-| What to add | Where | Pattern to follow |
-|-------------|-------|-------------------|
-| Entity fields + JPA annotations | `<Entity>.java` in model | Jakarta Persistence (`@Column`, `@NotEmpty`) |
-| Custom business methods | `<Entity>Api.java` interface + impl | Water Service interface pattern |
-| Configuration properties | Options interface + impl | **Options pattern** (see properties-knowledge skill) |
-| Extra dependencies | submodule `build.gradle` | Follow existing dependency style |
-| Custom REST endpoints | REST controller impl | Water REST patterns (see rest-knowledge skill) |
-| Custom queries | Repository impl | QueryBuilder fluent API (see persistence-knowledge skill) |
-| Test coverage | `<Entity>ApiTest.java` | Water test extension pattern |
+After generating, guide the user on what to customize:
+1. **Model**: Add fields, relationships, and JPA annotations to the entity class
+2. **API**: Add custom method signatures to the service interface
+3. **Repository**: Add custom query methods
+4. **Service**: Implement business logic in the service implementation
+5. **REST**: Customize endpoints, add validation, DTOs
+6. **Tests**: Update test cases to cover new business logic
+7. **Build**: Run `yo water:build` to compile, or use Gradle directly
 
 ---
 
-## Step 6: Build and publish workflow
+## Important rules
 
-```bash
-# 1. Build a specific project (preferred)
-yo water:build --projects=MyProject
-
-# 2. Build with dependency chain (when multiple projects)
-yo water:build --projects=Core,Repository,MyProject
-
-# 3. Publish to local Maven (for inter-project dependencies)
-yo water:publish --projects=MyProject
-# OR directly via Gradle (faster for local dev):
-./gradlew :MyProject-model:publishToMavenLocal :MyProject-api:publishToMavenLocal :MyProject-service:publishToMavenLocal -x test
-
-# 4. Publish all
-yo water:publish-all
-```
+- **Technology is never assumed**: Always ask the user which technology to use for `new-project` if not explicitly stated.
+- **Workspace required**: All commands except `new-project` require an existing workspace with `.yo-rc.json` in the root.
+- **Java & Gradle**: The generator validates Java >= 1.8 and Gradle >= 7.0.
+- **Naming conventions**: Project names use kebab-case (`my-project`), entity names use PascalCase (`MyEntity`).
+- **Group ID**: Auto-derived from project name if not specified (e.g. `my-project` → `com.my.project`).
+- **Water version**: For `water` technology, version is always `project.waterVersion` (managed by the framework, not user-configurable).
+- **Template versioning**: Templates follow a fallback strategy: exact version → minor (3.0.X) → major (3.X.Y) → basic.
+- **Technology overrides**: Technology-specific templates override common templates (e.g. Spring adds `@Repository` annotations).
+- **`--inlineArgs` only for `new-project`**: All other generators are interactive-only and do not support CLI flags.
 
 ---
 
-## Decision tree: should I use the generator?
+## Common scenarios & examples
 
-```
-User requests a change to a Water project
-  |
-  +-- Is it creating a NEW project or module?
-  |     YES → yo water:new-project (always)
-  |
-  +-- Is it adding a NEW entity with CRUD?
-  |     YES → yo water:add-entity (always)
-  |
-  +-- Is it adding REST to a project without REST?
-  |     YES → yo water:add-rest-services (always)
-  |
-  +-- Is it adding a new Gradle submodule?
-  |     YES → yo water:new-empty-module (always)
-  |
-  +-- Is it extending an entity from another module?
-  |     YES → yo water:new-entity-extension (always)
-  |
-  +-- Is it a BUILD operation?
-  |     YES → yo water:build --projects=X (preferred)
-  |           fallback: ./gradlew if yo is unavailable
-  |
-  +-- Is it a PUBLISH operation?
-  |     YES → yo water:publish --projects=X
-  |
-  +-- Does it involve modifying entity fields?
-  |     NO generator → edit <Entity>.java in model submodule
-  |
-  +-- Does it involve adding configuration properties?
-  |     NO generator → implement Options pattern manually
-  |                    (follow properties-knowledge skill)
-  |
-  +-- Does it involve adding custom REST endpoints?
-  |     NO generator → edit REST controller in service submodule
-  |                    (follow rest-knowledge skill)
-  |
-  +-- Does it involve adding business logic?
-  |     NO generator → edit ServiceImpl in service submodule
-  |
-  +-- Does it involve adding dependencies?
-  |     NO generator → edit submodule build.gradle
-  |
-  \-- None of the above?
-        → Manual implementation following Water patterns
-          Always check relevant knowledge skills first:
-          - architecture-knowledge
-          - persistence-knowledge
-          - rest-knowledge
-          - properties-knowledge
-          - runtime-knowledge
-```
-
----
-
-## Common scenarios & full examples
-
-**Scenario 1: New Spring CRUD microservice with REST and permissions**
+**Scenario 1: New CRUD microservice with REST (Spring)**
 ```bash
 yo water:new-project --inlineArgs \
   --projectName=product-catalog \
@@ -417,12 +326,10 @@ yo water:new-project --inlineArgs \
   --modelName=Product \
   --hasRestServices=true \
   --restContextRoot=/products \
-  --hasAuthentication=true \
-  --isProtectedEntity=true \
-  --isOwnedEntity=true
+  --hasAuthentication=true
 ```
 
-**Scenario 2: Integration/connector service without persistence**
+**Scenario 2: Integration service without persistence (Water)**
 ```bash
 yo water:new-project --inlineArgs \
   --projectName=notification-service \
@@ -433,18 +340,38 @@ yo water:new-project --inlineArgs \
   --restContextRoot=/notifications
 ```
 
-**Scenario 3: OSGi modular project**
+**Scenario 3: Entity with permission system (Water)**
+```bash
+yo water:new-project --inlineArgs \
+  --projectName=user-management \
+  --projectTechnology=water \
+  --applicationType=entity \
+  --modelName=Account \
+  --isProtectedEntity=true \
+  --isOwnedEntity=true \
+  --hasRestServices=true \
+  --hasAuthentication=true \
+  --moreModules=true \
+  --modules=user-integration,permission
+```
+
+**Scenario 4: Add entity to existing project**
+```bash
+yo water:add-entity
+# Interactively: select project, enter entity name, choose protection/ownership
+```
+
+**Scenario 5: OSGi modular project**
 ```bash
 yo water:new-project --inlineArgs \
   --projectName=iot-gateway \
   --projectTechnology=osgi \
   --applicationType=entity \
   --modelName=Device \
-  --hasRestServices=true \
-  --restContextRoot=/devices
+  --hasRestServices=true
 ```
 
-**Scenario 4: Quarkus cloud-native project**
+**Scenario 6: Quarkus cloud-native project**
 ```bash
 yo water:new-project --inlineArgs \
   --projectName=order-service \
@@ -455,49 +382,54 @@ yo water:new-project --inlineArgs \
   --restContextRoot=/orders
 ```
 
-**Scenario 5: Add second entity to existing project**
+**Scenario 7: Extend WaterUser entity in a new project**
 ```bash
-cd ApiGateway  # must be in project root where .yo-rc.json lives
-yo water:add-entity --inlineArgs \
-  --modelName=RateLimitRule \
-  --isProtectedEntity=true \
-  --isOwnedEntity=false
-```
-
-**Scenario 6: Build only selected projects**
-```bash
-yo water:build --projects=Core,Repository,JpaRepository,MyProject
-```
-
-**Scenario 7: Connector/integration project (service type, manual customization after)**
-```bash
-# Step 1: scaffold with generator
-yo water:new-project --inlineArgs \
-  --projectName=redis-api-gateway \
-  --projectTechnology=spring \
-  --applicationType=service \
-  --hasModel=true \
-  --hasRestServices=true \
-  --restContextRoot=/redis
-
-# Step 2: manually add after generation:
-# - RedisConstants.java (model submodule)
-# - RedisOptions interface + impl (api + service submodules)
-# - Redis client dependency in service/build.gradle
-# - Connection manager service impl
-# - application.properties entries
+yo water:new-entity-extension
+# Interactively:
+#   existingProject: false (create new project)
+#   entityName: ExtendedUser
+#   entityToExtend: it.water.user.model.WaterUser
+#   entityGradleModelGroupId: it.water.user
+#   entityGradleModelArtifactId: User-model
 ```
 
 ---
 
-## Important rules
+## Workflow decision tree
 
-- **Workspace required**: All commands except `new-project` require a project with `.yo-rc.json`.
-- **Never edit `.yo-rc.json`**: It is generator metadata. Manual edits can break re-generation.
-- **Naming conventions**: Project names use kebab-case (`my-project`), entity names use PascalCase (`MyEntity`).
-- **Group ID**: Auto-derived from project name if not specified (`my-project` → `com.my.project`).
-- **Water version**: Always `project.waterVersion` — managed by WaterWorkspaceGradlePlugin, never hardcoded.
-- **Re-generation**: Running `add-entity` or `add-rest-services` on an existing project is safe — generator merges rather than overwrites.
-- **Template strategy**: Generator uses fallback: exact version → minor (3.0.X) → major (3.X.Y) → basic.
-- **Inline args are preferred**: Always use `--inlineArgs` to avoid interactive prompts in automated contexts.
-- **Build order matters**: Always specify dependency chain in `--projects` (e.g., `Core,Repository,MyProject`).
+```
+User needs code generation
+  |
+  |-- New project from scratch?
+  |    \-- FIRST: Ask which technology (water / spring / osgi / quarkus) if not stated
+  |    \-- yo water:new-project
+  |         |-- Has persistence? -> applicationType=entity
+  |         |    |-- Needs permission control? -> isProtectedEntity=true
+  |         |    |-- Needs ownership? -> isOwnedEntity=true
+  |         |    \-- Spring tech? -> ask springRepository (true/false)
+  |         \-- Integration only? -> applicationType=service
+  |              \-- Needs its own model? -> hasModel=true
+  |
+  |-- Existing project, add entity?
+  |    \-- yo water:add-entity (interactive only)
+  |
+  |-- Existing project, add REST?
+  |    \-- yo water:add-rest-services (interactive only)
+  |
+  |-- Existing project, add custom module?
+  |    \-- yo water:new-empty-module (interactive only)
+  |
+  |-- Extend entity from another project?
+  |    \-- yo water:new-entity-extension (interactive only)
+  |
+  |-- Build project(s)?
+  |    |-- Selected -> yo water:build
+  |    \-- All -> yo water:build-all
+  |
+  |-- Publish project(s)?
+  |    |-- Selected -> yo water:publish [--username X --password Y]
+  |    \-- All -> yo water:publish-all
+  |
+  \-- Analyze code quality?
+       \-- yo water:stabilityMetrics
+```

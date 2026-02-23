@@ -1,0 +1,20 @@
+{
+  "name": "karate-testing",
+  "description": "Comprehensive knowledge base for Water Framework Karate REST API testing, including feature file patterns, karate-config.js setup, test runner configuration, and integration with Water test runtime. Use when implementing, reviewing, or debugging Karate tests for Water REST endpoints.",
+  "prompts": [
+    {
+      "role": "user",
+      "content": {
+        "type": "file",
+        "source": "karate-testing-knowledge.md"
+      }
+    },
+    {
+      "role": "user",
+      "content": {
+        "type": "text",
+        "text": "ARGUMENTS: {{arguments}}"
+      }
+    }
+  ]
+}

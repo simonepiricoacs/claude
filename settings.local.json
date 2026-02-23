@@ -38,7 +38,19 @@
       "Bash(./gradlew :ApiGateway-service:test:*)",
       "Bash(npm --version:*)",
       "Bash(npm install:*)",
-      "Bash(gradle --version:*)"
+      "Bash(gradle --version:*)",
+      "Bash(tree:*)",
+      "Bash(printf:*)",
+      "Bash(gradle projects:*)",
+      "Bash(gradle clean build:*)",
+      "Bash(gradle build:*)",
+      "Bash(gradle :RedisMessagingGateway-security:test:*)",
+      "Bash(gradle :RedisMessagingGateway-service:compileTestJava:*)",
+      "Bash(gradle clean test jacocoTestReport:*)",
+      "Bash(gradle :RedisMessagingGateway-service:test:*)",
+      "Bash(cat:*)",
+      "Bash(open:*)",
+      "Bash(gradle:*)"
     ],
     "deny": [],
     "ask": []
