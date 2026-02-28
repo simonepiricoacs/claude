@@ -874,40 +874,75 @@ Events are produced via `ApplicationEventProducer` (if registered). If no produc
 
 ## 18. Persistence Unit Configuration
 
-### Default Persistence Unit
+### One Persistence Unit per Module — Mandatory Rule
 
-Name: `water-default-persistence-unit`
+**Each Water module MUST define exactly ONE persistence unit**, and its name MUST reflect the module name.
 
-### Example persistence.xml
+**Naming convention:** `<module-kebab-case>-persistence-unit`
+
+| Module | Persistence Unit Name |
+|--------|----------------------|
+| `ApiGateway` | `api-gateway-persistence-unit` |
+| `Permission` | `permission-persistence-unit` |
+| `SharedEntity` | `sharedentity-persistence-unit` |
+| `User` | `user-persistence-unit` |
+| `MyCustomModule` | `my-custom-module-persistence-unit` |
+
+**Why this matters:**
+- When multiple modules run in the same JVM (test or production), each must have its own isolated persistence unit
+- Using the generic `water-default-persistence-unit` across multiple modules causes schema conflicts, entity class clashes, and unpredictable H2 in-memory DB collisions in tests
+- The module's repository must reference its own persistence unit name explicitly in the constructor
+
+### persistence.xml Location
+
+Place in `src/test/resources/META-INF/persistence.xml` (for tests) and `src/main/resources/META-INF/persistence.xml` (for production if not using Spring auto-configuration).
+
+### Example persistence.xml (test, HSQLDB in-memory)
 
 ```xml
-<persistence xmlns="https://jakarta.ee/xml/ns/persistence" version="3.0">
-    <persistence-unit name="water-default-persistence-unit" transaction-type="RESOURCE_LOCAL">
+<persistence xmlns="http://xmlns.jcp.org/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/persistence
+                                 http://xmlns.jcp.org/xml/ns/persistence/persistence_2_2.xsd"
+             version="2.2">
+
+    <persistence-unit name="my-module-persistence-unit" transaction-type="RESOURCE_LOCAL">
         <class>it.water.mymodule.model.MyEntity</class>
         <properties>
             <property name="javax.persistence.jdbc.driver" value="org.hsqldb.jdbcDriver"/>
-            <property name="javax.persistence.jdbc.url" value="jdbc:hsqldb:mem:testdb"/>
+            <property name="javax.persistence.jdbc.url" value="jdbc:hsqldb:mem:mymoduledb;sql.syntax_mys=true"/>
             <property name="javax.persistence.jdbc.user" value="sa"/>
             <property name="javax.persistence.jdbc.password" value=""/>
             <property name="hibernate.dialect" value="org.hibernate.dialect.HSQLDialect"/>
             <property name="hibernate.show_sql" value="true"/>
             <property name="hibernate.hbm2ddl.auto" value="create-drop"/>
+            <property name="hibernate.archive.autodetection" value="class"/>
         </properties>
     </persistence-unit>
 </persistence>
 ```
 
-### Custom Persistence Unit
+> **Note:** Use a unique in-memory DB name per module (`jdbc:hsqldb:mem:mymoduledb`) to prevent H2/HSQLDB schema sharing between modules running in the same JVM.
 
-Modules can define their own persistence unit by overriding `persistenceUnitName` in the repository:
+### Wiring the Persistence Unit in the Repository
+
+The repository implementation MUST pass the module-specific persistence unit name to the superclass:
 
 ```java
-public class MyEntityRepositoryImpl extends BaseJpaRepositoryImpl<MyEntity> {
+@FrameworkComponent
+public class MyEntityRepositoryImpl extends BaseJpaRepositoryImpl<MyEntity>
+        implements MyEntityRepository {
+
     public MyEntityRepositoryImpl() {
-        super("my-custom-persistence-unit", MyEntity.class);
+        // MUST use the module-specific persistence unit name
+        super("my-module-persistence-unit", MyEntity.class);
     }
 }
 ```
+
+### Default Persistence Unit (Framework Internal Only)
+
+Name: `water-default-persistence-unit` — used only by `JpaRepository-test-utils` and framework-level tests. **Never use this name in application modules.**
 
 ---
 
@@ -942,7 +977,9 @@ public class MyEntityRepositoryImpl extends BaseJpaRepositoryImpl<MyEntity> {
 
 ### Anti-Patterns
 
-1. **Calling `repository.removeAll()` in production.** This deletes ALL records without any filter.
+1. **Sharing `water-default-persistence-unit` across application modules.** Each module must declare its own persistence unit with a name derived from the module name (`<module-kebab-case>-persistence-unit`). Sharing the default unit causes schema conflicts and test isolation failures when multiple modules run in the same JVM.
+
+2. **Calling `repository.removeAll()` in production.** This deletes ALL records without any filter.
 
 2. **Building JPA CriteriaQuery manually in service code.** Always use QueryBuilder.
 

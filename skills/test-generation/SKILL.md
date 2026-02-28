@@ -122,6 +122,16 @@ class <Entity>ApiTest implements Service {
 }
 ```
 
+### 1.2 REST Controllers: Karate ONLY — No JUnit Direct Tests
+
+> **MANDATORY RULE**: `RestControllerImpl` classes (and any class implementing a `RestApi` interface) MUST be tested **exclusively** via Karate feature files.
+>
+> - **NEVER** write a `@Test` JUnit method that directly instantiates or calls a `RestControllerImpl`.
+> - **NEVER** use `MockMvc`, `WebTestClient`, `RestAssured`, or any HTTP client inside a JUnit `@Test` for this purpose.
+> - The only JUnit classes allowed for REST testing are the **Karate runner classes** described in §1.2 and §1.3 below, whose sole purpose is to launch Karate scenarios.
+> - Business logic and permission checks are tested at the service/Api level via `ApiTest` (§1.1).
+> - Karate tests verify the HTTP response format, status codes, and JSON structure of the REST layer.
+
 ### 1.2 Spring Boot REST Integration Test
 
 For modules with `-service-spring` submodule:
@@ -458,7 +468,7 @@ For each source class in `src/main/java` without a corresponding test:
 3. **SystemApi interfaces** -> Test system-level operations without permission context
 4. **Repository interfaces** -> Test custom queries if any
 5. **ServiceImpl classes** -> Covered through Api/SystemApi tests
-6. **RestControllerImpl** -> Covered through Karate feature files
+6. **RestControllerImpl** -> Covered **exclusively** through Karate feature files (see §1.2/§1.3). Do NOT generate any JUnit test that directly invokes or instantiates a RestControllerImpl.
 
 ### 4.2 Complete Existing Tests
 
@@ -545,6 +555,7 @@ If coverage is below 80%:
 - [ ] Permission scenarios tested (if entity is protected)
 - [ ] Edge cases tested (non-existent IDs, empty results, boundary values)
 - [ ] Karate feature file covers REST CRUD + response format validation (if REST module)
+- [ ] **No JUnit `@Test` directly calls or instantiates a `RestControllerImpl`** — REST layer is tested exclusively via Karate runners
 
 ---
 
