@@ -1,3 +1,5 @@
-- [REST @Path /water prefix rule](feedback_rest_path_prefix.md) — CXF adds /water base context; never include it in @Path
-- [Water Module 4-Tier Template](reference_water_module_template.md) — canonical model/api/service/service-spring decomposition
-- [HomeLibrary project](project_homelibrary.md) — embeddable 3-module domain; SystemApi pattern breaks Book<->Loan cycle
+# Water Solution Architect — Agent Memory
+
+Architectural patterns (REST path convention, 4-tier module decomposition) have been consolidated into the **framework-core-knowledge** skill.
+
+New entries in this file should only record project-specific ADRs, active project architectural decisions, or patterns not already covered by a skill.

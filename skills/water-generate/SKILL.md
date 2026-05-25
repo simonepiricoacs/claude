@@ -356,6 +356,8 @@ After generating, guide the user on what to customize:
 - **Template versioning**: Templates follow a fallback strategy: exact version → minor (3.0.X) → major (3.X.Y) → basic.
 - **Technology overrides**: Technology-specific templates override common templates (e.g. Spring adds `@Repository` annotations).
 - **Always use `--inlineArgs`**: All generators support `--inlineArgs`. Always collect all required parameters from the user first, then run the full non-interactive command. Never run any generator without `--inlineArgs`.
+- **Command names are kebab-case**: The registered generator commands use kebab-case, NOT camelCase. Use `yo water:new-project` (not `yo water:newProject`), `yo water:add-entity` (not `yo water:entity`), `yo water:new-empty-module`, `yo water:new-entity-extension`. When in doubt, run `yo water:help --fulltext` to see the exact registered names.
+- **`--inlineArgs` not `--inline`**: The correct flag is `--inlineArgs`. The `--inline` flag does not exist in the Water generator — using it silently falls back to interactive mode.
 
 ---
 

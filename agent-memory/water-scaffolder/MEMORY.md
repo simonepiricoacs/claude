@@ -1,4 +1,5 @@
-# Water Scaffolder Agent Memory
+# Water Scaffolder — Agent Memory
 
-- [User Profile](user_profile.md) — Water Framework architect and developer, senior level, working on Water Framework source monorepo
-- [Generator Command Patterns](feedback_generator_commands.md) — Confirmed generator command patterns and known behaviors
+Generator command patterns (kebab-case command names, `--inlineArgs` flag, `.yo-rc.json` behavior) have been consolidated into the **water-generate** skill.
+
+New entries in this file should only record workspace-specific generator configurations, project-specific quirks, or patterns not already covered by a skill.

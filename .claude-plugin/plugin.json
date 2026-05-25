@@ -1,0 +1,22 @@
+{
+  "name": "water-framework",
+  "displayName": "Water Framework",
+  "version": "1.0.0",
+  "description": "Claude Code agents and skills for developing with the Water Framework (OSGi/Spring/Quarkus multi-runtime Java framework).",
+  "author": {
+    "name": "Aristide Cittadino",
+    "url": "https://www.water-framework.com/"
+  },
+  "homepage": "https://www.water-framework.com/",
+  "repository": "https://github.com/Water-Framework/claude",
+  "license": "MIT",
+  "keywords": [
+    "water-framework",
+    "java",
+    "osgi",
+    "spring",
+    "quarkus",
+    "DDD",
+    "enterprise"
+  ]
+}
