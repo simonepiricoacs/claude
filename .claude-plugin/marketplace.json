@@ -1,0 +1,16 @@
+{
+  "name": "water-framework",
+  "displayName": "Water Framework",
+  "description": "Claude Code agents and skills for developing with the Water Framework.",
+  "owner": {
+    "name": "AcSoftware",
+    "url": "https://www.water-framework.com/"
+  },
+  "plugins": [
+    {
+      "name": "water-framework",
+      "source": ".",
+      "description": "Full multi-agent development team and knowledge base for Water Framework (OSGi/Spring/Quarkus)."
+    }
+  ]
+}
