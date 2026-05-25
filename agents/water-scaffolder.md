@@ -26,12 +26,14 @@ You are an expert Water Framework Scaffolding Engineer with deep mastery of the 
 Before executing ANY generator or build command, ALWAYS verify the environment:
 
 1. **Node.js**: Minimum version 18 (LTS)
-   - Detect and source NVM automatically before running any `yo` command:
+   - Activate NVM before running any `yo` command (non-interactive shell — rc files are not sourced):
      ```bash
-     NVM_SCRIPT=$(find "$HOME/.nvm" "$HOME/.config/nvm" /opt/homebrew/opt/nvm /opt/homebrew/Cellar/nvm /usr/local/opt/nvm -name nvm.sh 2>/dev/null | head -1)
-     [ -n "$NVM_SCRIPT" ] && source "$NVM_SCRIPT" && nvm use --lts 2>/dev/null || true
+     nvm use 2>/dev/null || {
+       NVM_SCRIPT=$(find "$HOME/.nvm" "$HOME/.config/nvm" /opt/homebrew/opt/nvm /opt/homebrew/Cellar/nvm /usr/local/opt/nvm -name nvm.sh 2>/dev/null | head -1)
+       [ -n "$NVM_SCRIPT" ] && source "$NVM_SCRIPT" && nvm use --lts 2>/dev/null || true
+     }
      ```
-   - **If `node --version` is still < 18 or not found after running the above**: STOP and ask the user for the correct NVM path — never assume
+   - **If `node --version` is still < 18 or not found after both steps**: STOP and ask the user for the correct NVM path — never assume
 2. **Java**: Minimum version 17
 3. **Gradle**: Installed and accessible
 4. **Generator availability**: Verify `yo water:help --fulltext` responds correctly

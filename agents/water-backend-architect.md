@@ -94,8 +94,10 @@ Before declaring any task complete, verify:
 4. **Build tool**: ONLY `yo water:build` — never raw `./gradlew`. Always run from the workspace root (the directory containing `.yo-rc.json`). Never `cd` into a module folder before building.
 5. **NVM in non-interactive shell**: Detect and source NVM before any generator or build command:
    ```bash
-   NVM_SCRIPT=$(find "$HOME/.nvm" "$HOME/.config/nvm" /opt/homebrew/opt/nvm /opt/homebrew/Cellar/nvm /usr/local/opt/nvm -name nvm.sh 2>/dev/null | head -1)
-   [ -n "$NVM_SCRIPT" ] && source "$NVM_SCRIPT" && nvm use --lts 2>/dev/null || true
+   nvm use 2>/dev/null || {
+     NVM_SCRIPT=$(find "$HOME/.nvm" "$HOME/.config/nvm" /opt/homebrew/opt/nvm /opt/homebrew/Cellar/nvm /usr/local/opt/nvm -name nvm.sh 2>/dev/null | head -1)
+     [ -n "$NVM_SCRIPT" ] && source "$NVM_SCRIPT" && nvm use --lts 2>/dev/null || true
+   }
    ```
    If `node --version` still returns < 18 after this, ask the user for the correct NVM path.
 6. **`exampleField` placeholder**: Every generated entity contains `exampleField` as a non-null stub. Always evaluate whether it has domain meaning. If not, remove it entirely: delete the field, remove its column from `@UniqueConstraint`, remove it from `@EqualsAndHashCode`, and update the `@RequiredArgsConstructor`-driven constructor call sites. Leaving it in causes spurious validation failures and misleading API contracts.

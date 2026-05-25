@@ -33,14 +33,21 @@ If any of these commands fail or return an unsupported version, inform the user 
 
 ### 2. Check Node.js version and NVM
 
-If `node --version` returns a version **lower than 18**, or if `node` is not found, check if NVM is available and use it to switch to a compatible version:
+If `node --version` returns a version **lower than 18**, or if `node` is not found, activate NVM using the following strategy. The Bash tool runs in a non-interactive shell where `~/.zshrc` / `~/.bashrc` are not sourced, so NVM is typically not on the PATH. Apply this two-step pattern:
 
 ```bash
-command -v nvm || [ -s "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
-nvm list
-nvm use 20   # or whichever >= 18 version is installed
+# Step 1: try direct nvm use (succeeds if nvm is already available in the environment)
+nvm use 2>/dev/null || {
+  # Step 2: discover and source nvm.sh, then activate
+  NVM_SCRIPT=$(find "$HOME/.nvm" "$HOME/.config/nvm" \
+    /opt/homebrew/opt/nvm /opt/homebrew/Cellar/nvm /usr/local/opt/nvm \
+    -name nvm.sh 2>/dev/null | head -1)
+  [ -n "$NVM_SCRIPT" ] && source "$NVM_SCRIPT" && nvm use --lts 2>/dev/null || true
+}
 node --version
 ```
+
+If `node --version` still returns a version < 18 after both steps, ask the user for the correct NVM installation path before proceeding.
 
 ### 3. Check if `yo` (Yeoman) is installed
 
