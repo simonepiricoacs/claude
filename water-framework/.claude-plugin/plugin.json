@@ -18,5 +18,7 @@
     "quarkus",
     "DDD",
     "enterprise"
-  ]
+  ],
+  "agents": "../agents",
+  "skills": "../skills"
 }
