@@ -238,7 +238,8 @@ public void removeFromExternalApi(long entityId) { ... }
 ```
 
 **Rules:**
-- MUST be placed on `BaseApi` (Api) class methods only. Throws `WaterRuntimeException` if placed on SystemApi or other services.
+- MUST be placed on **service implementation** methods (`*ServiceImpl`), NOT on interface methods (`*Api`). The interceptor resolves annotations on the concrete class at runtime.
+- MUST NOT be placed on `*SystemServiceImpl` — SystemApi bypasses security by design.
 - When `checkById=true`, the parameter at `idParamIndex` MUST be of type `long`.
 
 ### 3.4 @AllowGenericPermissions (METHOD-level, BeforeMethodInterceptor)
@@ -282,7 +283,7 @@ public byte[] exportData() { ... }
 ```
 
 **Rules:**
-- MUST be placed on `BaseApi` class methods only.
+- MUST be placed on **service implementation** methods (`*ServiceImpl`), NOT on interface methods (`*Api`). The interceptor resolves annotations on the concrete class at runtime.
 - For non-`BaseEntityApi` services, MUST provide either `resourceName` or `resourceParamName`.
 
 ### 3.5 @AllowRoles (METHOD-level, BeforeMethodInterceptor)
@@ -306,7 +307,7 @@ public void dangerousOperation() { ... }
 ```
 
 **Rules:**
-- MUST be placed on `BaseApi` class methods only.
+- MUST be placed on **service implementation** methods (`*ServiceImpl`), NOT on interface methods (`*Api`). The interceptor framework resolves annotations at runtime on the concrete class — annotations on interfaces are invisible to the interceptor.
 - MUST provide at least one role name. Throws `WaterRuntimeException` if empty.
 - Use sparingly. Prefer fine-grained `@AllowPermissions` or `@AllowGenericPermissions`.
 

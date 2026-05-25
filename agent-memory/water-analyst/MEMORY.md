@@ -1,0 +1,6 @@
+- [Standard module decomposition](module-decomposition-pattern.md) — Recurring 3-module split (model/api/service) + optional application module
+- [Api vs SystemApi separation criteria](api-vs-systemapi-criteria.md) — When to expose an operation as SystemApi instead of Api
+- [REST path convention](rest-path-convention.md) — CXF auto-prepends `/water`; never include it in @Path
+- [Permission action naming](permission-action-naming.md) — Convention for resource.action permission identifiers
+- [Karate test scaffolding requirements](karate-rest-tests.md) — Required properties & runner conventions for Karate REST tests
+- [State-machine cross-aggregate cascade](state-machine-cross-aggregate-cascade.md) — Pair SystemApi methods on both aggregates when state mirrors

@@ -85,7 +85,14 @@
       "Bash(kill -3 12775 2>/dev/null && sleep 2 && echo \"Thread dump sent\")",
       "Bash(grep -A 20 '\"Test worker\"' /tmp/ag-rest-test.log | head -50\necho \"===\"\ngrep -B2 \"hsqldb\\\\|HSQLDB\\\\|hibernate.hbm2ddl\\\\|lock\\\\|WAITING\\\\|BLOCKED\" /tmp/ag-rest-test.log | head -80)",
       "Bash(pkill -f \"GradleWorkerMain\\\\|12775\\\\|12554\" 2>/dev/null; sleep 1; echo \"Killed\")",
-      "Bash(kill -3 15045 2>/dev/null && sleep 3 && grep -A 50 '\"Test worker\"' /tmp/ag-rest-test2.log | head -60)"
+      "Bash(kill -3 15045 2>/dev/null && sleep 3 && grep -A 50 '\"Test worker\"' /tmp/ag-rest-test2.log | head -60)",
+      "WebFetch(domain:water-framework.com)",
+      "Bash(mkdir -p /Users/aristide-cittadino/Documents/Workspace/AcSoftware/Water-framwork/source/Distribution/Distribution-spring-app/src/main/java/it/water/distribution/spring/app/config/dynamic)",
+      "Bash(mkdir -p /Users/aristide-cittadino/Documents/Workspace/AcSoftware/Water-framwork/source/Distribution/Distribution-spring-app/src/main/resources)",
+      "Bash(mkdir -p \"/Users/aristide-cittadino/Documents/Workspace/AcSoftware/Water-framwork/source/Distribution/Distribution-spring-app/src/main/java/it/water/distribution/spring/app\")",
+      "Bash(mkdir -p \"/Users/aristide-cittadino/Documents/Workspace/AcSoftware/Water-framwork/source/Distribution/Distribution-spring-app/src/main/resources\")",
+      "Bash(mkdir -p \"/Users/aristide-cittadino/Documents/Workspace/AcSoftware/Water-framwork/source/Distribution/Distribution-spring-app/src/test/java/it/water/distribution/spring/app\")",
+      "Bash(mkdir -p \"/Users/aristide-cittadino/Documents/Workspace/AcSoftware/Water-framwork/source/Distribution/Distribution-spring-app/src/test/resources\")"
     ],
     "deny": [],
     "ask": []

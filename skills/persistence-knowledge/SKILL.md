@@ -22,6 +22,7 @@ You are an expert Water Framework persistence architect with deep knowledge of t
 8. [String-based Query Parser](#8-string-based-query-parser)
 9. [PredicateBuilder - JPA Translation](#9-predicatebuilder---jpa-translation)
 10. [Pagination & Ordering](#10-pagination--ordering)
+10a. [Find Method Signatures — Complete Reference](#10a-find-method-signatures--complete-reference)
 11. [Transaction Management](#11-transaction-management)
 12. [BaseEntitySystemServiceImpl](#12-baseentitysystemserviceimpl)
 13. [BaseJpaRepositoryImpl Deep Dive](#13-basejparepositoryimpl-deep-dive)
@@ -518,6 +519,84 @@ MyEntity entity = repository.find(qb.field("email").equalTo("john@example.com"))
 
 ---
 
+## 10a. Find Method Signatures — Complete Reference
+
+This is the authoritative reference for every read method on `BaseRepository`. Always verify parameter order and return types here before writing repository code.
+
+### All read methods
+
+```java
+// Find by primary key — returns T, throws EntityNotFoundException if missing
+T find(long id);
+
+// Find single entity matching a Query — returns T, throws NoResultException if none
+T find(Query filter);
+
+// Find single entity matching a string filter expression
+T find(String filterStr);
+
+// Find all with pagination, filtering, ordering
+// delta  : page size (-1 = no limit, returns all)
+// page   : 1-based page number (ignored when delta = -1)
+// filter : Query object, or null for no filter
+// order  : QueryOrder, or null for no ordering
+// returns: PaginableResult<T> — getResults() returns Collection<T>, NOT List<T>
+PaginableResult<T> findAll(int delta, int page, Query filter, QueryOrder order);
+
+// Count entities matching a filter — filter can be null (counts everything)
+long countAll(Query filter);
+```
+
+### ⚠️ Parameter order trap — `findAll`
+
+`Query` is the **third** parameter. Getting this wrong causes a compile error or silent type mismatch.
+
+```java
+// WRONG:
+this.findAll(query, -1, -1, null)
+
+// CORRECT:
+this.findAll(-1, -1, query, null)
+```
+
+### ⚠️ Return type trap — `getResults()`
+
+`PaginableResult.getResults()` returns `Collection<T>`, **not** `List<T>`. Assigning directly to `List` causes a compile error.
+
+```java
+// WRONG — compile error:
+List<MyEntity> list = repository.findAll(-1, -1, q, null).getResults();
+
+// CORRECT — wrap with ArrayList:
+List<MyEntity> list = new ArrayList<>(repository.findAll(-1, -1, q, null).getResults());
+```
+
+### Common find patterns
+
+```java
+// All records, no filter, no ordering
+List<MyEntity> all = new ArrayList<>(repository.findAll(-1, -1, null, null).getResults());
+
+// Filtered, no pagination
+Query q = getQueryBuilderInstance().field("status").equalTo("ACTIVE");
+List<MyEntity> active = new ArrayList<>(repository.findAll(-1, -1, q, null).getResults());
+
+// Paginated — page 2, 10 items per page, filtered and ordered
+QueryOrder order = new DefaultQueryOrder();
+order.addOrderField("entityCreateDate", false); // DESC
+PaginableResult<MyEntity> page2 = repository.findAll(10, 2, q, order);
+int totalPages = page2.getNumPages();
+Collection<MyEntity> items = page2.getResults();
+
+// Single entity by filter
+MyEntity single = repository.find(getQueryBuilderInstance().field("email").equalTo("a@b.com"));
+
+// Count
+long total = repository.countAll(q);
+```
+
+---
+
 ## 11. Transaction Management
 
 ### Transaction Flow in BaseJpaRepositoryImpl
@@ -926,7 +1005,7 @@ Place in `src/test/resources/META-INF/persistence.xml` (for tests) and `src/main
 
 ### Wiring the Persistence Unit in the Repository
 
-The repository implementation MUST pass the module-specific persistence unit name to the superclass:
+The repository implementation MUST pass the entity-specific persistence unit name to the superclass:
 
 ```java
 @FrameworkComponent
@@ -934,11 +1013,23 @@ public class MyEntityRepositoryImpl extends BaseJpaRepositoryImpl<MyEntity>
         implements MyEntityRepository {
 
     public MyEntityRepositoryImpl() {
-        // MUST use the module-specific persistence unit name
-        super("my-module-persistence-unit", MyEntity.class);
+        // MUST use the entity-specific persistence unit name
+        super("myentity-persistence-unit", MyEntity.class);
     }
 }
 ```
+
+> **⚠️ Generator gotcha — `yo water:add-entity`**: When adding a new entity to an existing project, the generator copies the persistence unit name from the first/main entity of the project (e.g., `"book-persistence-unit"`). The generated `*RepositoryImpl.java` for the new entity will have the WRONG persistence unit constant. **Always manually update it** to match the new entity:
+>
+> ```java
+> // Generated (WRONG — copied from first entity):
+> private static final String LOAN_PERSISTENCE_UNIT = "book-persistence-unit";
+>
+> // Correct — must be updated manually:
+> private static final String LOAN_PERSISTENCE_UNIT = "loan-persistence-unit";
+> ```
+>
+> Failing to update this causes the new entity's repository to attach to the wrong persistence context at runtime.
 
 ### Default Persistence Unit (Framework Internal Only)
 
@@ -979,9 +1070,15 @@ Name: `water-default-persistence-unit` — used only by `JpaRepository-test-util
 
 1. **Sharing `water-default-persistence-unit` across application modules.** Each module must declare its own persistence unit with a name derived from the module name (`<module-kebab-case>-persistence-unit`). Sharing the default unit causes schema conflicts and test isolation failures when multiple modules run in the same JVM.
 
-2. **Calling `repository.removeAll()` in production.** This deletes ALL records without any filter.
+2. **Copy-pasting `*RepositoryImpl` without updating the persistence unit constant.** The `yo water:add-entity` generator inherits the persistence unit name from the project's first entity. Every new `*RepositoryImpl` must have its constant updated to `"<entity-kebab-case>-persistence-unit"`. A wrong persistence unit silently attaches the repository to the wrong JPA context — no compile error, only runtime data corruption or entity-not-found failures.
 
-2. **Building JPA CriteriaQuery manually in service code.** Always use QueryBuilder.
+3. **Calling `repository.removeAll()` in production.** This deletes ALL records without any filter.
+
+4. **Building JPA CriteriaQuery manually in service code.** Always use QueryBuilder.
+
+5. **Passing `Query` as the first argument to `findAll()`.** The signature is `findAll(int delta, int page, Query filter, QueryOrder order)` — `Query` is the third parameter. Passing it first causes a compile error (type mismatch) or — if types happen to align — silently wrong behavior.
+
+6. **Assigning `getResults()` directly to `List<T>`.** `PaginableResult.getResults()` returns `Collection<T>`. Assigning it to `List<T>` causes a compile error. Always wrap: `new ArrayList<>(result.getResults())`.
 
 3. **Ignoring optimistic locking.** If you bypass `entityVersion`, concurrent updates may overwrite each other silently.
 

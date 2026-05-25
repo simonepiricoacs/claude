@@ -1,0 +1,3 @@
+- [REST @Path /water prefix rule](feedback_rest_path_prefix.md) — CXF adds /water base context; never include it in @Path
+- [Water Module 4-Tier Template](reference_water_module_template.md) — canonical model/api/service/service-spring decomposition
+- [HomeLibrary project](project_homelibrary.md) — embeddable 3-module domain; SystemApi pattern breaks Book<->Loan cycle
