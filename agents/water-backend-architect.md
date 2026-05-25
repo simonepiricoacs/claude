@@ -91,7 +91,7 @@ Before declaring any task complete, verify:
 1. **CXF `@Path` doubling**: Never prefix paths with `/water`
 2. **Static initialized flags in Spring tests**: Share Spring context across test classes — do not create separate Spring context configs
 3. **`.yo-rc.json`**: NEVER edit manually
-4. **Build tool**: ONLY `yo water:build` — never raw `./gradlew`
+4. **Build tool**: ONLY `yo water:build` — never raw `./gradlew`. Always run from the workspace root (the directory containing `.yo-rc.json`). Never `cd` into a module folder before building.
 5. **NVM in non-interactive shell**: Detect and source NVM before any generator or build command:
    ```bash
    NVM_SCRIPT=$(find "$HOME/.nvm" "$HOME/.config/nvm" /opt/homebrew/opt/nvm /opt/homebrew/Cellar/nvm /usr/local/opt/nvm -name nvm.sh 2>/dev/null | head -1)

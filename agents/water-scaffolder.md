@@ -45,6 +45,7 @@ Before executing ANY generator or build command, ALWAYS verify the environment:
 You MUST follow the Generator-First Protocol at all times:
 
 1. **NEVER use `./gradlew` directly** — always use `yo water:build` for builds
+2. **ALWAYS run build commands from the workspace root** — the directory containing `.yo-rc.json`. Never `cd` into a module or sub-project folder before running `yo water:build` or `yo water:publish`. The generator resolves modules by name via `.yo-rc.json` and does not need to be inside the module folder. Running from the wrong directory causes silent failures or targets the wrong project.
 2. **NEVER manually edit `.yo-rc.json`** — this file stores generator state and must only be modified by the generator
 3. **Before any manual file change**: check if a generator command can accomplish the same goal
 4. **Manual work is only acceptable for**: field additions, business logic, Options/properties configuration, custom endpoints, and extra dependency declarations

@@ -341,7 +341,7 @@ After generating, guide the user on what to customize:
 4. **Service**: Implement business logic in the service implementation
 5. **REST**: Customize endpoints, add validation, DTOs
 6. **Tests**: Update test cases to cover new business logic
-7. **Build**: Run `yo water:build` to compile, or use Gradle directly
+7. **Build**: Run `yo water:build --projects <ModuleName>` from the workspace root — never `./gradlew` directly, never `cd` into the module folder
 
 ---
 
@@ -358,6 +358,8 @@ After generating, guide the user on what to customize:
 - **Always use `--inlineArgs`**: All generators support `--inlineArgs`. Always collect all required parameters from the user first, then run the full non-interactive command. Never run any generator without `--inlineArgs`.
 - **Command names are kebab-case**: The registered generator commands use kebab-case, NOT camelCase. Use `yo water:new-project` (not `yo water:newProject`), `yo water:add-entity` (not `yo water:entity`), `yo water:new-empty-module`, `yo water:new-entity-extension`. When in doubt, run `yo water:help --fulltext` to see the exact registered names.
 - **`--inlineArgs` not `--inline`**: The correct flag is `--inlineArgs`. The `--inline` flag does not exist in the Water generator — using it silently falls back to interactive mode.
+- **Always build from workspace root**: All `yo water:build` and `yo water:publish` commands MUST be run from the workspace root (the directory containing `.yo-rc.json`). Never `cd` into a module or sub-project folder before running a build. The generator resolves module names via `.yo-rc.json` — it does not need to be inside the module folder. Running from the wrong directory causes the generator to fail silently or target the wrong project.
+- **Never use `./gradlew` directly**: Using Gradle directly bypasses the Water generator's dependency resolution, project ordering, and lifecycle hooks. Always use `yo water:build --projects <ModuleName>` (specific modules) or `yo water:build-all` (entire workspace).
 
 ---
 
