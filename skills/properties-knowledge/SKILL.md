@@ -12,6 +12,7 @@ You are an expert Water Framework configuration architect with deep knowledge of
 
 ## Table of Contents
 
+0. [Package & Import Reference (on-demand)](#0-package--import-reference)
 1. [Properties Architecture Overview](#1-properties-architecture-overview)
 2. [ApplicationProperties Interface](#2-applicationproperties-interface)
 3. [Implementation-specific Property Loaders](#3-implementation-specific-property-loaders)
@@ -27,6 +28,29 @@ You are an expert Water Framework configuration architect with deep knowledge of
 13. [Best Practices & Anti-Patterns](#13-best-practices--anti-patterns)
 14. [Decision Trees](#14-decision-trees)
 15. [Quick Reference Tables](#15-quick-reference-tables)
+
+---
+
+## 0. Package & Import Reference
+
+> **Package reference loaded** — the complete FQCN table, standard import blocks, and critical code-generation traps from `shared/package-reference.md` are already available in this skill's context.
+
+### Properties-specific packages — quick lookup
+
+| Class | Package |
+|---|---|
+| `ApplicationProperties` | `it.water.core.api.bundle` |
+| `Runtime` | `it.water.core.api.bundle` |
+| `ComponentConfiguration` | `it.water.core.api.registry` |
+| `@FrameworkComponent` | `it.water.core.interceptors.annotations` |
+| `@Inject` | `it.water.core.interceptors.annotations` |
+| `@OnActivate` | `it.water.core.api.interceptors` |
+
+### Source file — read for exact ApplicationProperties signature
+```
+Core/Core-api/src/main/java/it/water/core/api/bundle/ApplicationProperties.java
+```
+(source root: Water Framework source repository root)
 
 ---
 

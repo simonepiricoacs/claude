@@ -9,11 +9,20 @@ You are an expert assistant for the **Water Framework code generator** (`generat
 
 ---
 
-## Step 0: Prerequisites Check
+## Step 0: Prerequisites Check (One-Time, Cached)
 
-Before running any generator command, verify the environment is correctly set up. Run these checks in order and guide the user to fix any issue found.
+### 0.1 Check memory cache
 
-### 1. Check required tools
+Before running any check, look for `generator_prerequisites.md` in the project's auto-memory directory (visible in your system context as the memory path for this project).
+
+- If the file exists **AND** contains `Status: OK` → **SKIP ALL CHECKS** and proceed to Step 1 immediately.
+- If the file does not exist **OR** `Status` is not `OK` → proceed to 0.2.
+
+### 0.2 Run full prerequisites check (only when cache is missing or invalid)
+
+Run these checks in order and guide the user to fix any issue found.
+
+#### Required tools
 
 ```bash
 # Check Java version (requires >= 1.8)
@@ -31,25 +40,18 @@ npm --version
 
 If any of these commands fail or return an unsupported version, inform the user before proceeding.
 
-### 2. Check Node.js version and NVM
+#### Node.js version and NVM
 
-If `node --version` returns a version **lower than 18**, or if `node` is not found, activate NVM using the following strategy. The Bash tool runs in a non-interactive shell where `~/.zshrc` / `~/.bashrc` are not sourced, so NVM is typically not on the PATH. Apply this two-step pattern:
+If `node --version` returns a version **lower than 18**, or if `node` is not found, check if NVM is available and use it to switch to a compatible version:
 
 ```bash
-# Step 1: try direct nvm use (succeeds if nvm is already available in the environment)
-nvm use 2>/dev/null || {
-  # Step 2: discover and source nvm.sh, then activate
-  NVM_SCRIPT=$(find "$HOME/.nvm" "$HOME/.config/nvm" \
-    /opt/homebrew/opt/nvm /opt/homebrew/Cellar/nvm /usr/local/opt/nvm \
-    -name nvm.sh 2>/dev/null | head -1)
-  [ -n "$NVM_SCRIPT" ] && source "$NVM_SCRIPT" && nvm use --lts 2>/dev/null || true
-}
+command -v nvm || [ -s "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
+nvm list
+nvm use 20   # or whichever >= 18 version is installed
 node --version
 ```
 
-If `node --version` still returns a version < 18 after both steps, ask the user for the correct NVM installation path before proceeding.
-
-### 3. Check if `yo` (Yeoman) is installed
+#### Check if `yo` (Yeoman) is installed
 
 ```bash
 yo --version
@@ -61,7 +63,7 @@ If `yo` is not found, install it:
 npm install -g yo
 ```
 
-### 4. Check if `generator-water` is installed
+#### Check if `generator-water` is installed
 
 ```bash
 yo --generators | grep water
@@ -75,7 +77,7 @@ npm install -g yo generator-water --registry https://nexus.acsoftware.it/nexus/r
 
 > **Note**: This registry is the official ACSoftware Nexus repository. An active network connection to the registry is required.
 
-### Summary checklist
+#### Summary checklist
 
 | Tool | Minimum version | Check command |
 |------|----------------|---------------|
@@ -85,6 +87,39 @@ npm install -g yo generator-water --registry https://nexus.acsoftware.it/nexus/r
 | npm | any recent | `npm --version` |
 | yo (Yeoman) | any | `yo --version` |
 | generator-water | any | `yo --generators \| grep water` |
+
+### 0.3 Save result to memory
+
+After a successful check, write the result to `generator_prerequisites.md` in the project's auto-memory directory (use the memory path visible in your system context).
+
+Use this format:
+
+```markdown
+---
+name: generator-prerequisites
+description: Cache of water generator prerequisites check result
+metadata:
+  type: project
+---
+
+Status: OK
+Last checked: <YYYY-MM-DD>
+Node version: <node --version output>
+NVM path: <nvm path if used>
+yo version: <yo --version output>
+generator-water: installed
+```
+
+Also verify that `MEMORY.md` in the project's auto-memory directory contains a reference to `generator_prerequisites.md`. If not already present, add a brief pointer entry (e.g. under a `## Generator Prerequisites` section).
+
+### 0.4 On generator command failure
+
+If a `yo water:*` command fails at any point:
+
+1. Re-run the **full prerequisites check** (ignore the cache — do not read `Status: OK` from the file).
+2. Set the cache file to `Status: NEEDS_RECHECK` (or delete it) so the next run also performs a full check.
+3. If prerequisites fail → guide the user to fix them before retrying the generator.
+4. If prerequisites pass → diagnose the generator-specific error (wrong flags, missing `.yo-rc.json`, network issue, etc.).
 
 Once all prerequisites are satisfied, proceed to Step 1.
 
@@ -348,7 +383,7 @@ After generating, guide the user on what to customize:
 4. **Service**: Implement business logic in the service implementation
 5. **REST**: Customize endpoints, add validation, DTOs
 6. **Tests**: Update test cases to cover new business logic
-7. **Build**: Run `yo water:build --projects <ModuleName>` from the workspace root — never `./gradlew` directly, never `cd` into the module folder
+7. **Build**: Run `yo water:build` to compile, or use Gradle directly
 
 ---
 
@@ -365,8 +400,6 @@ After generating, guide the user on what to customize:
 - **Always use `--inlineArgs`**: All generators support `--inlineArgs`. Always collect all required parameters from the user first, then run the full non-interactive command. Never run any generator without `--inlineArgs`.
 - **Command names are kebab-case**: The registered generator commands use kebab-case, NOT camelCase. Use `yo water:new-project` (not `yo water:newProject`), `yo water:add-entity` (not `yo water:entity`), `yo water:new-empty-module`, `yo water:new-entity-extension`. When in doubt, run `yo water:help --fulltext` to see the exact registered names.
 - **`--inlineArgs` not `--inline`**: The correct flag is `--inlineArgs`. The `--inline` flag does not exist in the Water generator — using it silently falls back to interactive mode.
-- **Always build from workspace root**: All `yo water:build` and `yo water:publish` commands MUST be run from the workspace root (the directory containing `.yo-rc.json`). Never `cd` into a module or sub-project folder before running a build. The generator resolves module names via `.yo-rc.json` — it does not need to be inside the module folder. Running from the wrong directory causes the generator to fail silently or target the wrong project.
-- **Never use `./gradlew` directly**: Using Gradle directly bypasses the Water generator's dependency resolution, project ordering, and lifecycle hooks. Always use `yo water:build --projects <ModuleName>` (specific modules) or `yo water:build-all` (entire workspace).
 
 ---
 

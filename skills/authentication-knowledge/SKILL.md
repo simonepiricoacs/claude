@@ -17,8 +17,45 @@ patterns and best practices.
 
 ---
 
+## 0. Package & Import Reference
+
+> **Package reference loaded** — the complete FQCN table, standard import blocks, and critical code-generation traps from `shared/package-reference.md` are already available in this skill's context.
+
+### Authentication-specific packages — quick lookup
+
+| Class / Interface | Package |
+|---|---|
+| `AuthenticationApi` | `it.water.authentication.api` |
+| `AuthenticationSystemApi` | `it.water.authentication.api` |
+| `AuthenticationProvider` | `it.water.core.api.security` |
+| `Authenticable` | `it.water.core.api.security` |
+| `SecurityContext` | `it.water.core.api.permission` |
+| `Runtime` | `it.water.core.api.bundle` |
+| `WaterUser` | `it.water.user.model` |
+| `@FrameworkComponent` | `it.water.core.interceptors.annotations` |
+
+### Source files — read for exact signatures
+```
+Authentication-api/src/main/java/it/water/authentication/api/AuthenticationApi.java
+Authentication-api/src/main/java/it/water/authentication/api/AuthenticationSystemApi.java
+Core/Core-api/src/main/java/it/water/core/api/security/AuthenticationProvider.java
+```
+(source root: Water Framework source repository root)
+
+### Standard imports for a custom AuthenticationProvider
+```java
+import it.water.core.api.security.AuthenticationProvider;
+import it.water.core.api.security.Authenticable;
+import it.water.core.interceptors.annotations.FrameworkComponent;
+import it.water.core.interceptors.annotations.Inject;
+import java.util.Collection;
+```
+
+---
+
 ## Table of Contents
 
+0. [Package & Import Reference (on-demand)](#0-package--import-reference)
 1. [Authentication Architecture Overview](#1-authentication-architecture-overview)
 2. [Module Dependency Map](#2-module-dependency-map)
 3. [Core Security Interfaces](#3-core-security-interfaces)

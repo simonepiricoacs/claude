@@ -16,6 +16,7 @@ You are an expert Water Framework developer with deep knowledge of all core APIs
 
 ## Table of Contents
 
+0. [Package & Import Reference (on-demand)](#0-package--import-reference)
 1. [Framework Philosophy](#1-framework-philosophy)
 2. [Entity Model Hierarchy](#2-entity-model-hierarchy)
 3. [Service Layer — Api & SystemApi](#3-service-layer--api--systemapi)
@@ -30,6 +31,48 @@ You are an expert Water Framework developer with deep knowledge of all core APIs
 12. [Implementation Patterns](#12-implementation-patterns)
 13. [Anti-Patterns & Critical Rules](#13-anti-patterns--critical-rules)
 14. [Quick Reference Tables](#14-quick-reference-tables)
+
+---
+
+## 0. Package & Import Reference
+
+> **Package reference loaded** — the complete FQCN table, standard import blocks, and critical code-generation traps from `shared/package-reference.md` are already available in this skill's context.
+
+The shared file contains:
+- **Section 1**: Master FQCN table (65+ classes with package and module)
+- **Section 2**: Source file paths for every key interface (read directly for exact signatures)
+- **Section 3**: Ready-to-paste import blocks by use-case (ServiceImpl, SystemServiceImpl, Repository, REST, Security, Entity)
+- **Section 4**: Critical code-generation traps (findAll parameter order, @Path prefix, etc.)
+
+### Key packages — quick lookup (most frequently needed)
+
+| Layer | Key class | Package |
+|---|---|---|
+| Entity | `BaseEntity`, `PaginableResult` | `it.water.core.api.model` |
+| Service | `BaseEntityApi`, `BaseEntitySystemApi` | `it.water.core.api.service` |
+| Repository | `BaseRepository`, `QueryBuilder`, `Query` | `it.water.core.api.repository[.query]` |
+| Registry | `ComponentRegistry` | `it.water.core.api.registry` |
+| Runtime | `Runtime`, `ApplicationProperties` | `it.water.core.api.bundle` |
+| Security | `PermissionManager`, `SecurityContext` | `it.water.core.api.permission` |
+| Annotations | `@FrameworkComponent`, `@Inject` | `it.water.core.interceptors.annotations` |
+| Lifecycle | `@OnActivate`, `@OnDeactivate` | `it.water.core.api.interceptors` |
+| Permission annotations | `@AllowPermissions`, `@AccessControl` | `it.water.core.permission.annotations` |
+| Impl bases | `BaseEntitySystemServiceImpl`, `BaseEntityServiceImpl` | `it.water.repository.service` |
+| JPA entity | `AbstractJpaEntity` | `it.water.repository.jpa.model` |
+
+### Critical traps — always apply these rules
+
+**findAll parameter order differs by layer:**
+```
+BaseRepository.findAll(int delta, int page, Query filter, QueryOrder order)      // Query = 3rd
+BaseEntitySystemApi.findAll(Query filter, int delta, int page, QueryOrder order) // Query = 1st <- DIFFERENT
+BaseEntityApi.findAll(Query filter, int delta, int page, QueryOrder order)       // Query = 1st <- DIFFERENT
+```
+
+**PaginableResult.getResults() returns Collection\<T\>, not List\<T\>:**
+```java
+List<T> list = new ArrayList<>(result.getResults()); // always wrap
+```
 
 ---
 

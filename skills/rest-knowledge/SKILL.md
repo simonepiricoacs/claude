@@ -12,6 +12,7 @@ You are an expert Water Framework REST architect with deep knowledge of the REST
 
 ## Table of Contents
 
+0. [Package & Import Reference (on-demand)](#0-package--import-reference)
 1. [REST Architecture Overview](#1-rest-architecture-overview)
 2. [Module Dependency Map](#2-module-dependency-map)
 3. [RestApi Interface Hierarchy](#3-restapi-interface-hierarchy)
@@ -32,6 +33,48 @@ You are an expert Water Framework REST architect with deep knowledge of the REST
 18. [Best Practices & Anti-Patterns](#18-best-practices--anti-patterns)
 19. [Decision Trees](#19-decision-trees)
 20. [Quick Reference Tables](#20-quick-reference-tables)
+
+---
+
+## 0. Package & Import Reference
+
+> **Package reference loaded** — the complete FQCN table, standard import blocks, and critical code-generation traps from `shared/package-reference.md` are already available in this skill's context.
+
+### REST-specific packages — quick lookup
+
+| Class | Package |
+|---|---|
+| `RestApi` | `it.water.core.api.service.rest` |
+| `WaterJsonView` | `it.water.core.api.service.rest` |
+| `BaseEntityRestApi<T>` | `it.water.service.rest.persistence` |
+| `BaseEntityApi<T>` | `it.water.core.api.service` |
+| `PaginableResult<T>` | `it.water.core.api.model` |
+| `Query` | `it.water.core.api.repository.query` |
+| `QueryOrder` | `it.water.core.api.repository.query` |
+| `@FrameworkComponent` | `it.water.core.interceptors.annotations` |
+| `@Inject` | `it.water.core.interceptors.annotations` |
+
+### Source files — read for exact signatures
+```
+Core/Core-api/src/main/java/it/water/core/api/service/rest/RestApi.java
+Rest/Rest-persistence/src/main/java/it/water/service/rest/persistence/BaseEntityRestApi.java
+```
+(source root: Water Framework source repository root)
+
+### Critical REST traps
+
+**@Path prefix**: CXF adds `/water` as base context automatically:
+```java
+@Path("/myentities")        // ✅ → /water/myentities
+@Path("/water/myentities")  // ❌ → /water/water/myentities (HTTP 404)
+```
+
+**BaseEntityRestApi.findAll** uses `Integer` (nullable), not `int`:
+```java
+// ✅ correct — delta and page are Integer, not int
+public PaginableResult<T> findAll(Integer delta, Integer page, Query filter, QueryOrder order)
+// Internal default: if (delta == null || delta <= 0) delta = 20;
+```
 
 ---
 
@@ -257,9 +300,10 @@ public interface MyEntityRestApi extends RestApi {
     @LoggedIn
     @AllowGenericPermissions(actions = {CrudActions.FIND_ALL}, resourceName = "it.water.mymodule.model.MyEntity")
     @JsonView(WaterJsonView.Public.class)
+    // NOTE: delta and page are Integer (nullable), not int — matches BaseEntityRestApi.findAll signature
     PaginableResult<MyEntity> findAllMyEntity(
-        @QueryParam("delta") int delta,
-        @QueryParam("page") int page,
+        @QueryParam("delta") Integer delta,
+        @QueryParam("page") Integer page,
         @QueryParam("filter") String filter,
         @QueryParam("order") String order);
 }
@@ -322,7 +366,9 @@ public class MyEntityRestControllerImpl extends BaseEntityRestApi<MyEntity>
 **File:** `Rest/Rest-persistence/src/main/java/it/water/service/rest/persistence/BaseEntityRestApi.java`
 
 ```java
-public abstract class BaseEntityRestApi<T extends BaseEntity> {
+public abstract class BaseEntityRestApi<T extends BaseEntity> implements Service {
+    public static final int HYPERIOT_DEFAULT_PAGINATION_DELTA = 20;
+
     protected abstract BaseEntityApi<T> getEntityService();
 
     // Default CRUD implementations
@@ -342,9 +388,19 @@ public abstract class BaseEntityRestApi<T extends BaseEntity> {
         getEntityService().remove(id);
     }
 
-    public PaginableResult<T> findAll(int delta, int page, String filter, String order) {
+    // NOTE: delta and page are Integer (nullable boxed type), NOT int primitive.
+    // Defaults are applied internally:
+    //   if (delta == null || delta <= 0) delta = 20;
+    //   if (page  == null || page  <= 0) page  = 1;
+    public PaginableResult<T> findAll(Integer delta, Integer page, Query filter, QueryOrder order) {
         // Delegates to service with query parsing
+        if (delta == null || delta <= 0) delta = HYPERIOT_DEFAULT_PAGINATION_DELTA;
+        if (page  == null || page  <= 0) page  = 1;
         return getEntityService().findAll(filter, delta, page, order);
+    }
+
+    public PaginableResult<T> findAll() {
+        return findAll(null, null, null, null);
     }
 }
 ```
@@ -354,7 +410,8 @@ public abstract class BaseEntityRestApi<T extends BaseEntity> {
 - Provides default implementations for all CRUD operations
 - Delegates to `BaseEntityApi<T>` service
 - Subclasses only override for custom behavior
-- Handles `filter` and `order` string parsing automatically
+- `findAll` parameters `delta` and `page` are **`Integer` (nullable)**, not `int` — defaults (`delta=20`, `page=1`) are applied internally when `null` or `<= 0`
+- Handles `Query` and `QueryOrder` objects (not raw strings) for filter and ordering
 
 ---
 
@@ -1083,6 +1140,10 @@ class MyEntityRestIntegrationTest {
 6. **Returning `Response` objects from entity APIs.** Return typed entities — let the framework handle status codes.
 
 7. **Not defining both JAX-RS and Spring interfaces for dual deployment.** If you only need one, the other platform won't work.
+
+8. **Including `/water` prefix in `@Path` on REST interfaces.** CXF automatically uses `/water` as the base context root. Adding `/water` in `@Path` doubles the prefix and produces `/water/water/...` paths, resulting in HTTP 404. Example: use `@Path("/myentities")` — the full URL served by CXF will be `/water/myentities`.
+
+9. **Declaring `findAll` delta/page parameters as `int` primitive.** The correct signature uses `Integer` (nullable boxed type). Using `int` prevents passing `null` to trigger the built-in defaults.
 
 ---
 

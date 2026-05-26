@@ -12,6 +12,7 @@ You are an expert Water Framework security architect with deep knowledge of the 
 
 ## Table of Contents
 
+0. [Package & Import Reference (on-demand)](#0-package--import-reference)
 1. [Security Architecture Overview](#1-security-architecture-overview)
 2. [Module Dependency Map](#2-module-dependency-map)
 3. [Security Annotations Reference](#3-security-annotations-reference)
@@ -32,6 +33,53 @@ You are an expert Water Framework security architect with deep knowledge of the 
 18. [Decision Trees](#18-decision-trees)
 19. [Testing Security](#19-testing-security)
 20. [Quick Reference Tables](#20-quick-reference-tables)
+
+---
+
+## 0. Package & Import Reference
+
+> **Package reference loaded** — the complete FQCN table, standard import blocks, and critical code-generation traps from `shared/package-reference.md` are already available in this skill's context.
+
+### Authorization-specific packages — quick lookup
+
+| Class / Annotation | Package |
+|---|---|
+| `PermissionManager` | `it.water.core.api.permission` |
+| `SecurityContext` | `it.water.core.api.permission` |
+| `@AllowPermissions` | `it.water.core.permission.annotations` |
+| `@AllowRoles` | `it.water.core.permission.annotations` |
+| `@AllowGenericPermissions` | `it.water.core.permission.annotations` |
+| `@AllowPermissionsOnReturn` | `it.water.core.permission.annotations` |
+| `@AccessControl` | `it.water.core.permission.annotations` |
+| `@DefaultRoleAccess` | `it.water.core.permission.annotations` |
+| `CrudActions` | `it.water.core.permission.action` |
+| `UnauthorizedException` | `it.water.core.permission.exceptions` |
+| `OwnedResource` | `it.water.core.api.entity.owned` |
+| `SharedEntity` | `it.water.core.api.entity.shared` |
+
+### Source files — read for exact annotation signatures
+```
+Core/Core-permission/src/main/java/it/water/core/permission/annotations/AllowPermissions.java
+Core/Core-permission/src/main/java/it/water/core/permission/annotations/AllowRoles.java
+Core/Core-permission/src/main/java/it/water/core/permission/annotations/AccessControl.java
+Core/Core-api/src/main/java/it/water/core/api/permission/PermissionManager.java
+Core/Core-api/src/main/java/it/water/core/api/permission/SecurityContext.java
+```
+(source root: Water Framework source repository root)
+
+### Critical annotation attributes
+
+`@AllowPermissions` has four attributes — all are optional but commonly misused:
+```java
+@AllowPermissions(
+    actions = {CrudActions.SAVE},   // action names (strings)
+    checkById = false,              // if true, verifies ownership by ID
+    idParamIndex = 0,               // index of the ID param when checkById=true
+    systemApiRef = ""               // FQCN of SystemApi for the check
+)
+```
+
+`CrudActions` values: `"save"`, `"update"`, `"remove"`, `"find"`, `"findAll"` (NOT `"find-all"`).
 
 ---
 
@@ -347,6 +395,7 @@ public Map<String, Map<String, Map<String, Boolean>>> entityPermissionMap(
 @Retention(RetentionPolicy.RUNTIME)
 public @interface AllowPermissionsOnReturn {
     String[] actions() default {};
+    String systemApiRef() default "";
 }
 ```
 
@@ -772,7 +821,7 @@ Actions are string identifiers mapped to numeric IDs that are **powers of 2**. T
 | `CrudActions.SAVE` | `"save"` |
 | `CrudActions.UPDATE` | `"update"` |
 | `CrudActions.FIND` | `"find"` |
-| `CrudActions.FIND_ALL` | `"find-all"` |
+| `CrudActions.FIND_ALL` | `"findAll"` |
 | `CrudActions.REMOVE` | `"remove"` |
 
 **UserActions** (`Core/Core-permission/src/main/java/it/water/core/permission/action/UserActions.java`):
@@ -805,7 +854,7 @@ For a standard CRUD entity with `@AccessControl(availableActions = {SAVE, UPDATE
 | 0 | save | 1 | 00001 |
 | 1 | update | 2 | 00010 |
 | 2 | find | 4 | 00100 |
-| 3 | find-all | 8 | 01000 |
+| 3 | findAll | 8 | 01000 |
 | 4 | remove | 16 | 10000 |
 
 ### 8.4 Bitwise AND Logic

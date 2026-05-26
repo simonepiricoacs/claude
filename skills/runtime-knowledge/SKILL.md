@@ -12,6 +12,7 @@ You are an expert Water Framework runtime architect with deep knowledge of the C
 
 ## Table of Contents
 
+0. [Package & Import Reference (on-demand)](#0-package--import-reference)
 1. [Runtime Architecture Overview](#1-runtime-architecture-overview)
 2. [Module Dependency Map](#2-module-dependency-map)
 3. [Runtime Interface](#3-runtime-interface)
@@ -31,6 +32,48 @@ You are an expert Water Framework runtime architect with deep knowledge of the C
 17. [Best Practices & Anti-Patterns](#17-best-practices--anti-patterns)
 18. [Decision Trees](#18-decision-trees)
 19. [Quick Reference Tables](#19-quick-reference-tables)
+
+---
+
+## 0. Package & Import Reference
+
+> **Package reference loaded** — the complete FQCN table, standard import blocks, and critical code-generation traps from `shared/package-reference.md` are already available in this skill's context.
+
+### Runtime-specific packages — quick lookup
+
+| Class / Annotation | Package |
+|---|---|
+| `@FrameworkComponent` | `it.water.core.interceptors.annotations` |
+| `@Inject` | `it.water.core.interceptors.annotations` |
+| `@OnActivate` | `it.water.core.api.interceptors` |
+| `@OnDeactivate` | `it.water.core.api.interceptors` |
+| `ComponentRegistry` | `it.water.core.api.registry` |
+| `ComponentRegistration` | `it.water.core.api.registry` |
+| `ComponentConfiguration` | `it.water.core.api.registry` |
+| `ComponentFilter` | `it.water.core.api.registry.filter` |
+| `ComponentFilterBuilder` | `it.water.core.api.registry.filter` |
+| `Runtime` | `it.water.core.api.bundle` |
+| `ApplicationProperties` | `it.water.core.api.bundle` |
+| `SecurityContext` | `it.water.core.api.permission` |
+
+### Source files — read for exact annotation signatures
+```
+Core/Core-interceptors/src/main/java/it/water/core/interceptors/annotations/FrameworkComponent.java
+Core/Core-interceptors/src/main/java/it/water/core/interceptors/annotations/Inject.java
+Core/Core-api/src/main/java/it/water/core/api/interceptors/OnActivate.java
+Core/Core-api/src/main/java/it/water/core/api/registry/ComponentRegistry.java
+Core/Core-api/src/main/java/it/water/core/api/bundle/Runtime.java
+```
+(source root: Water Framework source repository root)
+
+### Critical annotation details
+
+```java
+@FrameworkComponent(priority = 1)      // 1 = lowest; use higher to override framework defaults
+@Inject(injectOnceAtStartup = false)   // false = dynamic re-injection; true = one-shot at startup
+@OnActivate   // method-level, no attributes — called when component registered
+@OnDeactivate // method-level, no attributes — called when component unregistered
+```
 
 ---
 
@@ -157,7 +200,9 @@ public class WaterRuntime implements Runtime {
 **File:** `Core/Core-api/src/main/java/it/water/core/api/registry/ComponentRegistry.java`
 
 ```java
-public interface ComponentRegistry extends Service {
+package it.water.core.api.registry;
+
+public interface ComponentRegistry {
     // Find all components matching type and optional filter
     <T> List<T> findComponents(Class<T> componentClass, ComponentFilter filter);
 
@@ -166,16 +211,21 @@ public interface ComponentRegistry extends Service {
 
     // Register a new component
     <T, K> ComponentRegistration<T, K> registerComponent(
-        Class<T> componentClass,
+        Class<? extends T> componentClass,
         T component,
         ComponentConfiguration configuration);
 
     // Unregister a component
-    <T> boolean unregisterComponent(ComponentRegistration<?, ?> registration);
-    <T> boolean unregisterComponent(T component);
+    <T> boolean unregisterComponent(ComponentRegistration<T, ?> registration);
+    <T> boolean unregisterComponent(Class<T> componentClass, T component);
 
-    // Lifecycle method invocation
-    <T> void invokeLifecycleMethod(LifecyclePhase phase, T component);
+    // Filter builder access
+    ComponentFilterBuilder getComponentFilterBuilder();
+
+    // Entity-specific lookups
+    <T extends BaseEntitySystemApi> T findEntitySystemApi(String entityClassName);
+    <T extends BaseRepository> T findEntityRepository(String entityClassName);
+    <T extends BaseEntity> BaseRepository<T> findEntityExtensionRepository(Class<T> type);
 }
 ```
 
@@ -210,15 +260,18 @@ Base implementation providing:
 
 ## 5. @FrameworkComponent Annotation
 
-**File:** `Core/Core-api/src/main/java/it/water/core/api/registry/FrameworkComponent.java` (via ClassIndex)
+**File:** `Core/Core-interceptors/src/main/java/it/water/core/interceptors/annotations/FrameworkComponent.java` (via ClassIndex)
 
 ```java
-@Target(ElementType.TYPE)
+package it.water.core.interceptors.annotations;
+
+@Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @IndexAnnotated  // Atteo ClassIndex for compile-time discovery
 public @interface FrameworkComponent {
-    Class<?>[] services() default {};  // Interfaces to register as
-    int priority() default 1;         // Component priority
+    String[] properties() default {};   // OSGi/Spring properties to expose
+    Class<?>[] services() default {};   // Interfaces to register as
+    int priority() default 1;           // 1 = lowest priority, higher numbers = higher priority
 }
 ```
 
@@ -254,10 +307,10 @@ public class HighPriorityServiceImpl implements MyService { ... }
 **File:** `Core/Core-api/src/main/java/it/water/core/api/interceptors/OnActivate.java`
 
 ```java
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface OnActivate {
-}
+package it.water.core.api.interceptors;
+
+@Target({ElementType.METHOD}) @Retention(RetentionPolicy.RUNTIME)
+public @interface OnActivate { }   // no attributes
 ```
 
 ### @OnDeactivate
@@ -265,10 +318,10 @@ public @interface OnActivate {
 **File:** `Core/Core-api/src/main/java/it/water/core/api/interceptors/OnDeactivate.java`
 
 ```java
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
-public @interface OnDeactivate {
-}
+package it.water.core.api.interceptors;
+
+@Target({ElementType.METHOD}) @Retention(RetentionPolicy.RUNTIME)
+public @interface OnDeactivate { }  // no attributes
 ```
 
 ### Lifecycle Timing
@@ -349,10 +402,13 @@ public class MyServiceImpl implements MyService {
 **File:** `Core/Core-interceptors/src/main/java/it/water/core/interceptors/annotations/Inject.java`
 
 ```java
-@Target(ElementType.FIELD)
+package it.water.core.interceptors.annotations;
+
+@Target({ElementType.FIELD})
 @Retention(RetentionPolicy.RUNTIME)
+@IndexAnnotated
 public @interface Inject {
-    boolean injectOnceAtStartup() default true;
+    boolean injectOnceAtStartup() default false;  // true = inject only once, not dynamically
 }
 ```
 
@@ -360,8 +416,8 @@ public @interface Inject {
 
 | Mode | `injectOnceAtStartup` | Behavior |
 |------|----------------------|----------|
-| Startup | `true` (default) | Inject once when component is registered |
-| Runtime | `false` | Re-inject on every method call |
+| Dynamic (default) | `false` (default) | Re-inject on every method call |
+| Startup | `true` | Inject once when component is registered, never again |
 
 ### Usage
 
@@ -369,14 +425,14 @@ public @interface Inject {
 @FrameworkComponent(services = MyService.class)
 public class MyServiceImpl implements MyService {
 
-    @Inject @Setter    // Setter required for injection
+    @Inject @Setter    // Setter required for injection; default injectOnceAtStartup=false (re-injected per call)
     private AnotherService anotherService;
 
     @Inject @Setter
     private ComponentRegistry componentRegistry;
 
-    @Inject(injectOnceAtStartup = false) @Setter  // Re-injected per call
-    private DynamicService dynamicService;
+    @Inject(injectOnceAtStartup = true) @Setter  // Inject only once at startup
+    private StableService stableService;
 }
 ```
 
@@ -412,10 +468,10 @@ public class WaterComponentsInjector implements BeforeMethodFieldInterceptor<Inj
 
 ```
 1. @FrameworkComponent classes instantiated
-2. @Inject fields with injectOnceAtStartup=true are resolved and set
+2. @Inject fields with injectOnceAtStartup=true are resolved and set at startup
 3. Components registered in ComponentRegistry
 4. @OnActivate methods invoked
-5. (On method calls) @Inject fields with injectOnceAtStartup=false are re-injected
+5. (On method calls) @Inject fields with injectOnceAtStartup=false (default) are re-injected
 ```
 
 ---
