@@ -18,6 +18,7 @@ You are an expert Water Framework persistence architect with deep knowledge of t
 3. [BaseRepository Interface](#3-baserepository-interface)
 4. [JpaRepository Extension](#4-jparepository-extension)
 5. [AbstractJpaEntity Base Class](#5-abstractjpaentity-base-class)
+5a. [Entity Relationships, Fetch Type & JSON Views](#5a-entity-relationships-fetch-type--json-views)
 6. [QueryBuilder Fluent API](#6-querybuilder-fluent-api)
 7. [Query Operations Hierarchy](#7-query-operations-hierarchy)
 8. [String-based Query Parser](#8-string-based-query-parser)
@@ -321,8 +322,144 @@ public class MyEntity extends AbstractJpaEntity {
     @Column
     private int quantity;
 
+    @Column @Temporal(TemporalType.TIMESTAMP)
+    private java.util.Date startDate;   // always java.util.Date unless user specifies otherwise
+
     // getters/setters via Lombok or manual
 }
+```
+
+### Date Field Rule
+
+**Always use `java.util.Date` for date/timestamp fields** in Water Framework entities, unless the user explicitly requests a different type (e.g., `LocalDate`, `LocalDateTime`, `Instant`).
+
+- Annotate date fields with `@Temporal(TemporalType.TIMESTAMP)` for timestamps (date + time) or `@Temporal(TemporalType.DATE)` for date-only fields.
+- `AbstractJpaEntity` itself uses `java.util.Date` for `entityCreateDate` and `entityModifyDate` — be consistent.
+- The `FieldNameOperand` comparison methods (`greaterThan`, `lowerThan`, etc.) have explicit `java.util.Date` overloads, so `java.util.Date` integrates with the QueryBuilder API without casting.
+
+```java
+// Correct — java.util.Date with @Temporal
+@Column @Temporal(TemporalType.TIMESTAMP)
+private java.util.Date startDate;
+
+@Column @Temporal(TemporalType.DATE)
+private java.util.Date birthDate;
+
+// Only use alternative types if the user explicitly requests it:
+// private LocalDate birthDate;      // user-requested
+// private LocalDateTime startDate;  // user-requested
+// private Instant eventTime;        // user-requested
+```
+
+---
+
+## 5a. Entity Relationships, Fetch Type & JSON Views
+
+### JSON Views disponibili nel framework
+
+**Classe:** `it.water.core.api.service.rest.WaterJsonView` — interfaccia con viste annidate
+
+| View | Eredita da | Scopo |
+|------|-----------|-------|
+| `WaterJsonView.Public` | `Extended` | Campi visibili a tutti; risposta REST pubblica |
+| `WaterJsonView.Extended` | `Compact` | Campi di dettaglio; risposta standard |
+| `WaterJsonView.Compact` | — | Campi essenziali, payload ridotto |
+| `WaterJsonView.Internal` | — | Metadati di sistema (es. `active`, `deleted`, `passwordConfirm`) |
+| `WaterJsonView.Secured` | — | Campi protetti, non esposti all'esterno |
+| `WaterJsonView.Privacy` | — | Campi sensibili per privacy |
+
+Le viste si usano sia sui **campi delle entity** (con `@JsonView`) sia sui **metodi REST** (con `@JsonView` sul return type).  
+`AbstractJpaEntity` espone `id`, `entityVersion`, `entityCreateDate`, `entityModifyDate` in tutte le viste tranne `Secured`.
+
+### Regola Fetch Type — basata su JSON Views e API esposta
+
+Il fetch type di una relazione JPA **deve essere scelto in base a come il campo è esposto nel REST**:
+
+| Situazione | FetchType | Motivazione |
+|-----------|-----------|-------------|
+| Campo annotato con `@JsonIgnore` | `LAZY` | Non sarà serializzato: inutile caricarlo |
+| Campo annotato con `@JsonView(...)` | `EAGER` | Incluso nella risposta REST: deve essere precaricato |
+| Campo senza annotazione, non esposto | `LAZY` (default JPA) | Jackson non lo serializza se non ha view |
+| Collezione grande con `@JsonView` | `EAGER` con cautela, o query HQL esplicita | Valuta impatto sulle performance |
+
+```java
+// LAZY — @JsonIgnore: non serializzato
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "category_id")
+@JsonIgnore
+private Category category;
+
+// EAGER — @JsonView: incluso nella risposta REST
+@ManyToOne(fetch = FetchType.EAGER)
+@JoinColumn(name = "owner_id")
+@JsonView(WaterJsonView.Extended.class)
+private Department department;
+
+// Collezione LAZY — @JsonIgnore
+@OneToMany(mappedBy = "parent", fetch = FetchType.LAZY)
+@JsonIgnore
+private List<ChildEntity> children;
+
+// Collezione EAGER — inclusa nella risposta
+@OneToMany(mappedBy = "parent", fetch = FetchType.EAGER)
+@JsonView(WaterJsonView.Extended.class)
+private List<ChildEntity> children;
+```
+
+### Relazioni tra entità dello stesso modulo
+
+Usare le normali annotazioni JPA (`@ManyToOne`, `@OneToMany`, ecc.) con `@JoinColumn`.  
+Il fetch type segue la regola sopra (basata su `@JsonView` / `@JsonIgnore`).
+
+```java
+// Stessa entity, stesso modulo — relazione JPA normale
+@ManyToOne(fetch = FetchType.EAGER)
+@JoinColumn(name = "status_id")
+@JsonView(WaterJsonView.Extended.class)
+private OrderStatus status;
+```
+
+### Relazioni tra entità di moduli diversi (cross-module / microservizi)
+
+**NON usare relazioni JPA tra moduli diversi.** I moduli Water hanno persistence unit distinte e sono tecnicamente microservizi separati.  
+Gestire il collegamento tramite **solo il campo ID**, manualmente:
+
+```java
+// ✅ CORRETTO — cross-module: solo l'ID, nessuna relazione JPA
+@Column(name = "user_id")
+@JsonView(WaterJsonView.Extended.class)
+private long userId;   // riferimento a WaterUser in un altro modulo
+
+// Per risolvere l'entità target: iniettare la SystemApi del modulo remoto
+@Inject @Setter
+private UserSystemApi userSystemApi;
+
+public WaterUser getOwner() {
+    return userSystemApi.find(userId);
+}
+
+// ❌ SBAGLIATO — mai JPA relationship cross-module
+@ManyToOne
+@JoinColumn(name = "user_id")
+private WaterUser user;   // persistence unit diversa → runtime failure
+```
+
+### Tabella decisionale rapida
+
+```
+Campo relazione da aggiungere all'entity
+  |
+  +-- Modulo diverso (cross-module)?
+  |     --> solo campo ID (long), @Column
+  |         @JsonView se deve essere esposto via REST
+  |
+  +-- Stesso modulo?
+        |
+        +-- Esposto nell'API REST con @JsonView?
+        |     --> FetchType.EAGER + @JsonView(WaterJsonView.*.class)
+        |
+        +-- Non esposto (solo uso interno)?
+              --> FetchType.LAZY + @JsonIgnore
 ```
 
 ---
@@ -1349,6 +1486,12 @@ Name: `water-default-persistence-unit` — used only by `JpaRepository-test-util
 9. **Use `countAll(filter)` before `findAll()` for accurate pagination.** The framework does this automatically in `BaseJpaRepositoryImpl`.
 
 10. **Leverage `QueryOrder` for consistent sorting.** Don't rely on database default ordering.
+
+11. **Use `java.util.Date` for all date/timestamp fields in entities.** Always pair with `@Temporal(TemporalType.TIMESTAMP)` or `@Temporal(TemporalType.DATE)`. Use alternative types (`LocalDate`, `LocalDateTime`, `Instant`) only if the user explicitly requests them.
+
+12. **Never use JPA relationships across modules.** Cross-module references must be stored as plain `long` ID fields. Resolve the referenced entity by injecting the target module's SystemApi.
+
+13. **Set FetchType based on JSON serialization, not instinct.** If a relation field has `@JsonView`, use `EAGER`. If it has `@JsonIgnore`, use `LAZY`. Never set `EAGER` on a field that is `@JsonIgnore`'d — it wastes a DB join on every load.
 
 ### Anti-Patterns
 
