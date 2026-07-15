@@ -1,0 +1,11 @@
+{
+  "prompts": [
+    {
+      "role": "user",
+      "content": {
+        "type": "file",
+        "source": "../../shared/package-reference.md"
+      }
+    }
+  ]
+}
