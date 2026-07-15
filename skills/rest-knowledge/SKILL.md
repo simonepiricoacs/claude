@@ -493,6 +493,13 @@ public interface RestApiRegistry extends Service {
 
 ## 9. JWT Authentication & Security Filters
 
+### Multitenancy claims (additive)
+When Company-based multitenancy is enabled (`water.authentication.multitenant.enabled`), the encrypted JWT carries two additive claims (see `authentication-knowledge` + `source/multitenancy-analysis-proposal.md`), both emitted by `NimbusJwtTokenService.generateClaims` ONLY when non-null (so legacy/single-tenant tokens are byte-identical):
+- `companyId` (`JWTConstants.JWT_CLAIM_COMPANY_ID`) — the active company (tenant) of the session.
+- `impersonatedBy` (`JWTConstants.JWT_CLAIM_IMPERSONATED_BY`) — set only on impersonation tokens; the caller who impersonated.
+
+`getPrincipals` reads them into `UserPrincipal` → `WaterAbstractSecurityContext` → `SecurityContext.getActiveCompanyId()` / `getImpersonatedBy()` / `isImpersonated()`. The JWT filters themselves are UNCHANGED (they build the context from the principals). REST login accepts an optional `@FormParam("companyId")` (JAX-RS) / `@RequestParam companyId` (Spring); a new authenticated endpoint `POST /water/authentication/impersonate` mints an impersonation token (permission `UserActions.IMPERSONATE`).
+
 ### GenericJWTAuthFilter
 
 **File:** `Rest/Rest-security/src/main/java/it/water/service/rest/security/jwt/GenericJWTAuthFilter.java`

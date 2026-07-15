@@ -135,6 +135,20 @@ Response
 
 ---
 
+## 1-bis. Multitenancy enforcement (Company-based)
+
+A THIRD access dimension alongside permission + ownership: **tenant scoping**. Full design in `source/multitenancy-analysis-proposal.md`. Opt-in per entity via the markers `TenantResource` (column `companyId`, null=global) / `MultiTenantResource` (M:N via `TenantMembershipResolver`).
+
+**Golden rule (lenient / backward compatible):** the tenant filter/check applies **only when `SecurityContext.getActiveCompanyId() != null`**. Null (MT off, non-scoped admin, legacy token) → no tenant restriction → identical to single-tenant. There is intentionally **NO `isAdmin()` special-casing** in the tenant dimension — admin scoping derives purely from whether a company is active (the owner filter still bypasses for admin; the tenant filter does not).
+
+Enforcement points (all in the Api layer / permission manager, never SystemApi):
+- `BaseEntityServiceImpl.createConditionForTenantResource` — ANDs the tenant condition on `find/findAll/countAll` (independent of and complementary to the owner/shared condition; an entity can be both and must satisfy both). `save()` auto-assigns `companyId`; `update()`/`doUpdate` restore it (no tenant-hijack).
+- `PermissionManagerDefault.checkUserOwnsResource` → ANDs `checkEntityBelongsToActiveTenant` on by-id access, AFTER the `if (user.isAdmin()) return true` short-circuit (so genuine admins — who are non-scoped — are unaffected).
+
+**Admin model:** non-scoped by default (cross-tenant provisioning); enters a tenant only via **user-level impersonation** (permission `UserActions.IMPERSONATE` on `WaterUser`; admin by construction, a normal user only if granted). Impersonation token carries `impersonatedBy=<caller>` (audit).
+
+---
+
 ## 2. Module Dependency Map
 
 ```

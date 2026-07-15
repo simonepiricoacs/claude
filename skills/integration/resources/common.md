@@ -60,6 +60,29 @@ Every protected request:
 Authorization: Bearer eyJhbGci...
 ```
 
+### Multitenancy (when enabled server-side — `water.authentication.multitenant.enabled`)
+
+The token is opaque/encrypted (the frontend never decodes the tenant claims). The company is chosen **at login** and baked into the token:
+
+```http
+POST /water/authentication/login
+Content-Type: application/x-www-form-urlencoded
+
+username=mario&password=...&companyId=100      # optional; a user M:N with companies picks one
+```
+- Omit `companyId` → the user's primary company (or, for an admin, a non-scoped/cross-tenant token).
+- A normal user's `companyId` must be one they belong to, else 401.
+- **Switching company = re-login** (or impersonation) to get a new token — there is no per-request company header.
+
+**Impersonation** — an admin (or a user granted the `IMPERSONATE` permission) mints a token acting AS another user:
+```http
+POST /water/authentication/impersonate      (JWT required)
+Content-Type: application/x-www-form-urlencoded
+
+targetUsername=mario&companyId=100           # companyId optional
+```
+Returns a token with the target's identity + tenant, flagged server-side as an impersonation (`impersonatedBy`) for audit. 403/401 if the caller lacks the permission. Use it to build "login as user" / support flows; treat the resulting session as the target user in the UI.
+
 ### Public endpoints (no token required)
 
 | Method | Path | Purpose |

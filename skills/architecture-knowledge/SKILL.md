@@ -187,6 +187,8 @@ Water provides interfaces that map directly to DDD concepts:
 | `OwnedResource` | Entity + Ownership | Entity belonging to a specific user (Aggregate Root ownership) |
 | `OwnedChildResource` | Child Entity | Entity owned through parent relationship |
 | `SharedEntity` | Shared Aggregate | Entity shareable across users |
+| `TenantResource` | Tenant-scoped Aggregate | Entity belonging to ONE company (tenant) — opaque nullable `companyId` column (null=global); extend `AbstractJpa[Expandable]TenantEntity` |
+| `MultiTenantResource` | M:N Tenant Aggregate | Entity in a many-to-many tenancy (e.g. `WaterUser`) — no column; scoped via a domain `TenantMembershipResolver` |
 | `ExpandableEntity` | Extensible Entity | Entity with runtime field expansion (Open/Closed Principle) |
 | `EntityExtension` | Entity Extension | Additional fields for an expandable entity |
 

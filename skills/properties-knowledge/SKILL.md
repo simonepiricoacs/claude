@@ -150,7 +150,7 @@ boolean val = applicationProperties.getPropertyOrDefault("my.feature.enabled", f
 **Property file:** `src/main/resources/application.properties`
 ```properties
 water.rest.services.url=http://localhost:8080
-it.water.user.registration.enabled=true
+water.user.registration.enabled=true
 water.connectors.hadoop.url=hdfs://cluster:8020
 ```
 
@@ -167,7 +167,7 @@ water.connectors.hadoop.url=hdfs://cluster:8020
 **Property file:** `etc/it.water.application`
 ```properties
 water.rest.services.url=http://localhost:8080
-it.water.user.registration.enabled=true
+water.user.registration.enabled=true
 ```
 
 ### 3.3 Test Implementation
@@ -390,7 +390,7 @@ it.water.mymodule.max.retries=5
 | Security/JWT | `water.rest.security.*` | `water.rest.security.jwt.validate` |
 | Keystore | `water.keystore.*` | `water.keystore.password` |
 | Email module | `it.water.mail.*` | `it.water.mail.smtp.host` |
-| User module | `it.water.user.*` | `it.water.user.registration.enabled` |
+| User module | `it.water.user.*` | `water.user.registration.enabled` |
 | Connectors | `water.connectors.<name>.*` | `water.connectors.hadoop.url` |
 | Custom modules | `it.water.<module>.*` | `it.water.mymodule.base.url` |
 
@@ -625,12 +625,12 @@ testProps.override("it.water.mymodule.base.url", "http://test-server:9090");
 
 | Property Key | Method | Default | Description |
 |-------------|--------|---------|-------------|
-| `it.water.user.registration.enabled` | `isRegistrationEnabled()` | `true` | Enable user self-registration |
-| `it.water.user.activation.url` | `getActivationUrl()` | (from REST) | URL for activation link |
-| `it.water.user.password.reset.url` | `getPasswordResetUrl()` | (from REST) | URL for password reset |
-| `it.water.user.admin.default.password` | `getAdminDefaultPassword()` | `"Water1!"` | Default admin password |
-| `it.water.user.physical.deletion.enabled` | `isPhysicalDeletionEnabled()` | `true` | Hard-delete vs soft-delete |
-| `it.water.user.registration.email.template.name` | `getRegistrationEmailTemplateName()` | `null` | Email template name |
+| `water.user.registration.enabled` | `isRegistrationEnabled()` | `true` | Enable user self-registration |
+| `water.user.activation.url` | `getActivationUrl()` | (from REST) | URL for activation link |
+| `water.user.password.reset.url` | `getPasswordResetUrl()` | (from REST) | URL for password reset |
+| `water.user.admin.default.password` | `getAdminDefaultPassword()` | `"Water1!"` | Default admin password |
+| `water.user.physical.deletion.enabled` | `isPhysicalDeletionEnabled()` | `true` | Hard-delete vs soft-delete |
+| `water.user.registration.email.template.name` | `getRegistrationEmailTemplateName()` | `null` | Email template name |
 
 ### REST Module
 
@@ -645,6 +645,19 @@ testProps.override("it.water.mymodule.base.url", "http://test-server:9090");
 | `water.rest.root.context` | `getRootContext()` | `"/water"` | REST root context path |
 | `water.rest.uploadFolder.path` | `getUploadFolderPath()` | `""` | File upload directory |
 | `water.rest.uploadFolder.maxFileSize` | `getUploadMaxFileSize()` | `10485760` | Max upload size (bytes) |
+
+### Authentication Module
+
+**Constants:** `Authentication/Authentication-service/src/main/java/it/water/authentication/service/AuthenticationConstants.java`
+**Options:** `Authentication/Authentication-api/src/main/java/it/water/authentication/api/options/AuthenticationOption.java`
+**Impl:** `Authentication/Authentication-service/src/main/java/it/water/authentication/service/AuthenticationOptionImpl.java`
+
+| Property Key | Method | Default | Description |
+|-------------|--------|---------|-------------|
+| `water.authentication.service.issuer` | `getIssuerName()` | `it.water.core.api.model.User` | Default authentication issuer |
+| `water.authentication.multitenant.enabled` | `isMultiTenantEnabled()` | `false` | **Multitenancy** enablement (issuer-side): when true, login embeds the active company as the `companyId` JWT claim and downstream tenant enforcement applies. Default false = single-tenant (backward compatible) |
+| `water.authentication.login.lockout.*` | (LoginAttemptStore) | see Authentication CLAUDE.md | Brute-force lockout (#34) — threshold/window/duration/backoff/max.keys |
+| `water.authentication.trusted.proxies` | — | `""` (empty) | CSV of trusted reverse proxies for X-Forwarded-For (#34) |
 
 ### JWT Security Module
 

@@ -464,6 +464,24 @@ Campo relazione da aggiungere all'entity
 
 ---
 
+## 5-bis. Tenant base classes & enforcement (Company-based multitenancy)
+
+Tenantized column-based entities extend a `@MappedSuperclass` in `JpaRepository-api` that carries the `companyId` column (nullable, opaque `Long`, `@JsonIgnore` — server-assigned like `ownerUserId`):
+- `AbstractJpaTenantEntity extends AbstractJpaEntity implements TenantResource` (non-expandable — e.g. `WaterRole`)
+- `AbstractJpaExpandableTenantEntity extends AbstractJpaExpandableEntity implements TenantResource` (expandable — e.g. `Document`; an expandable entity MUST stay expandable when tenantized)
+
+M:N entities (e.g. `WaterUser`) implement the marker `MultiTenantResource` (no column) and rely on a `TenantMembershipResolver` in their own module.
+
+**Where filtering happens** — `BaseEntityServiceImpl` (Api layer, `Repository-service`), gated on `SecurityContext.getActiveCompanyId() != null` (lenient; MT off / non-scoped admin / legacy token → no filter → backward compatible; no `isAdmin()` special-casing):
+- `save()` auto-assigns `companyId` from the active company for `TenantResource`.
+- `find/findAll/countAll` AND a tenant condition via `createConditionForTenantResource(...)`: `TenantResource` → `companyId = active OR companyId IS NULL`; `MultiTenantResource` → `id IN (resolver ids)` (empty set → `id = -1` → zero rows).
+- `update()` restores `companyId` from the DB (no tenant-hijack); `BaseJpaRepositoryImpl.doUpdate` mirrors it (defense in depth).
+- `PermissionManagerDefault.checkUserOwnsResource` ANDs a by-id tenant check after the admin short-circuit.
+
+⚠️ Build the M:N `id IN (...)` with `qb.createQueryFilter("id IN (" + csv + ")")` (numeric ids), NOT `field("id").in(list)` (capped at 2 operands — see §6 GOTCHA). SystemApi bypasses ALL of this (no tenant filter) — use it inside resolvers/enforcement machinery to avoid recursion.
+
+---
+
 ## 6. QueryBuilder Fluent API
 
 **Interface package:** `it.water.core.api.repository.query.QueryBuilder`
@@ -578,6 +596,10 @@ Query combined = nameFilter.or(ageFilter);
 
 // IN clause
 Query q = qb.field("id").equalTo(1).in(List.of(1L, 2L, 3L));
+// ⚠️ GOTCHA: the In operation is capped at 2 operands — `field("id").in(list)` throws
+//   `IllegalArgumentException: Too much operands for operation!` for lists with >1 value.
+//   For a real "id IN (many)" build it via the STRING filter with server-controlled numeric ids:
+//   qb.createQueryFilter("id IN (" + csvOfLongs + ")")   // see BaseEntityServiceImpl tenant/shared filters
 
 // NOT
 Query q = qb.field("deleted").equalTo(true).not();

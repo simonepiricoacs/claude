@@ -251,6 +251,26 @@ Extends `OwnedResource` with sharing capabilities. Integrates with the `SharedEn
 
 ---
 
+### 2.7-bis Tenant markers — Company-based multitenancy (`it.water.core.api.entity.tenant`)
+
+Two opt-in markers make an entity tenant-scoped (see `source/multitenancy-analysis-proposal.md`). Enforcement lives in `BaseEntityServiceImpl` (Api layer) and applies **only when `SecurityContext.getActiveCompanyId() != null`** (lenient: MT off / non-scoped admin / legacy token → no filtering → fully backward compatible; NO `isAdmin()` special-casing).
+
+```java
+// single-company entity: carries a nullable opaque companyId column (null = global/cross-tenant)
+public interface TenantResource extends BaseEntity {
+    String COMPANY_ID_FIELD_NAME = "companyId";
+    Long getCompanyId();  void setCompanyId(Long companyId);
+}
+// M:N entity: NO column — membership lives in a domain table, resolved by a TenantMembershipResolver
+public interface MultiTenantResource extends BaseEntity { }
+```
+
+- **Column-based** entities extend a base `@MappedSuperclass` (JpaRepository-api) that already carries `companyId`: `AbstractJpaTenantEntity` (non-expandable) / `AbstractJpaExpandableTenantEntity` (expandable — an expandable entity MUST stay expandable when tenantized). `companyId` is `@JsonIgnore` (server-assigned, like `ownerUserId`). Examples: `Document`, `WaterRole` (null=global role).
+- **M:N** entities (e.g. `WaterUser` via `UserCompany`) implement `MultiTenantResource`; the module provides a `TenantMembershipResolver` (`it.water.core.api.service.integration`) — `boolean supports(String type)` + `Set<Long> getEntityIdsInCompany(String type, long companyId)` — resolved from the ComponentRegistry, used to filter `id IN (...)`.
+- `companyId` is an **opaque `Long`**, never a JPA relation to `Company` (module isolation). Filter: `TenantResource` → `companyId = active OR companyId IS NULL`; `MultiTenantResource` → `id IN (resolver ids)`.
+
+---
+
 ### 2.8 ProtectedResource — Fine-Grained Access Resource
 
 ```java
@@ -941,9 +961,14 @@ public interface SecurityContext extends Service {
     boolean isLoggedIn();
     boolean isAdmin();
     long getLoggedEntityId();
+    // multitenancy (additive, default null): the active company (tenant) for the session,
+    // and — for impersonation tokens — the caller who impersonated this user.
+    default Long getActiveCompanyId() { return null; }
+    default String getImpersonatedBy() { return null; }
+    default boolean isImpersonated() { return getImpersonatedBy() != null; }
 }
 ```
-Inject this to read the currently authenticated user. Always request it from `ComponentRegistry` (it is request-scoped in web contexts).
+Inject this to read the currently authenticated user. Always request it from `ComponentRegistry` (it is request-scoped in web contexts). `getActiveCompanyId()` is the SINGLE carrier read by tenant enforcement (`!= null` → scope to that company; `null` → no tenant scope). Populated by the JWT filter from the `companyId`/`impersonatedBy` claims via `UserPrincipal` → `WaterAbstractSecurityContext`.
 
 ---
 

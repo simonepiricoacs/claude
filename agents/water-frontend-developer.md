@@ -110,6 +110,14 @@ Water does not have a server-side logout endpoint for stateless JWT. Logout is c
 
 When the server returns **401**, the token has expired or is invalid. Redirect the user to login. Implement an HTTP interceptor/middleware to handle this globally.
 
+#### Multitenancy (when enabled server-side)
+
+The JWT is opaque/encrypted — the frontend never decodes the tenant claims; the active company is chosen at **login** and baked into the token.
+- Login accepts an optional `companyId` form field. A user who belongs to several companies picks one; omit it for the primary company. Wrong/foreign `companyId` → 401.
+- **Switching company = re-authenticate** (new token). There is NO per-request company header; do not try to change tenant client-side.
+- **Impersonation ("login as user")**: `POST /water/authentication/impersonate` (JWT required, form field `targetUsername` + optional `companyId`) returns a token acting as the target user (needs the `IMPERSONATE` permission; 403/401 otherwise). Treat the returned session as the target user in the UI; surface a visible "impersonating" banner since the backend flags it for audit.
+- All data the user sees is already tenant-scoped server-side; the frontend does not filter by company.
+
 ---
 
 ### 3. Authorization and Permission-Based UI

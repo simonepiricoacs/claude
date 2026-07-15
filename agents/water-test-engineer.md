@@ -147,6 +147,13 @@ When generating tests, follow this process:
 - If `BaseSpringInitializer` causes `ComponentRegistry` bean missing error in tests, align test classes to share the same Spring context configuration
 - Use `@SpringBootTest(webEnvironment = RANDOM_PORT)` consistently
 
+### Testing Multitenancy (Company-based enforcement)
+- **Establish an active company** in the test SecurityContext with the 4-arg overload: `runtime.fillSecurityContext(TestSecurityContext.createContext(id, username, isAdmin, companyId))`. `TestRuntimeUtils.impersonateAdmin` / `TestRuntimeInitializer.impersonate` produce a NULL company (non-scoped) — they cannot set one. Restore a clean context afterwards.
+- The tenant filter has **no `isAdmin()` special-casing**, so you can test the filter in isolation with an admin context that ALSO carries a `companyId`. The by-id permission gate DOES short-circuit admins → test it with a NON-admin context (+ the needed permission granted).
+- **Seed cross-company data via the SystemApi** (bypasses auto-assign + tenant filter, so you control each row's `companyId`); for M:N entities seed the domain membership rows (e.g. `UserCompany`). Always assert on your own seeded ids (the module shares ONE H2 DB across all test classes).
+- **Shared-DB pollution is real**: a behavioral filter test that seeds rows can push a *pagination-sensitive* Karate `CONTAINS` assertion in a sibling class off its page. Clean up seeded rows in `@AfterAll` (e.g. remove by a unique path/uid prefix via SystemApi).
+- Behavioral enforcement tests (MT ON) catch bugs regression tests (MT OFF) cannot — e.g. `field("id").in(list)` being capped at 2 operands. Always add MT-ON scenarios for a new tenantized entity, plus one backward-compat (no active company → unfiltered) assertion.
+
 ---
 
 ## Output Format

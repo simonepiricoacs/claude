@@ -410,10 +410,68 @@ public class AuthenticationSystemServiceImpl extends BaseSystemServiceImpl
 
 **Critical Flow:**
 1. Read the configured issuer name from `AuthenticationOption`
-2. Scan all registered `AuthenticationProvider` components
-3. Find the one whose `issuersNames()` contains the configured issuer
-4. Delegate `login()` to that provider
-5. On success, generate JWT token via `JwtTokenService`
+2. **Brute-force gate**: build the lockout key and reject early if locked (see below)
+3. Scan all registered `AuthenticationProvider` components
+4. Find the one whose `issuersNames()` contains the configured issuer
+5. Delegate `login()` to that provider; record failure/success on the `LoginAttemptStore`
+6. On success, generate JWT token via `JwtTokenService`
+
+> The snippet above is simplified. The real implementation wraps provider delegation with the login-lockout
+> protection described next.
+
+### Login Lockout, Per-IP Throttling & Progressive Backoff (#34)
+
+To stop brute-force and targeted account-lock DoS, `login()` is throttled by a `LoginAttemptStore`
+(`it.water.authentication.api.LoginAttemptStore`; default impl `InMemoryLoginAttemptStore`).
+
+**Lockout key = `issuer:ip:username`.** Including the source IP means an attacker who only knows a username
+cannot lock the victim out from arbitrary hosts — each `(ip, username)` is throttled independently. If the IP
+is unavailable the key degrades to `issuer:unknown:username` (never worse than the old per-identity lock).
+
+**Additive overloads (public contract unchanged):**
+```java
+// AuthenticationApi (public)
+Authenticable login(String username, String password);              // existing
+Authenticable login(String username, String password, String clientIp);   // #34
+
+// AuthenticationSystemApi
+Authenticable login(String u, String p);                            // → resolves default issuer
+Authenticable login(String u, String p, String issuer);            // → 4-arg with null IP
+Authenticable login(String u, String p, String issuer, String clientIp);  // #34 — real impl
+```
+Delegation chain: `login(u,p)` → `login(u,p,issuer)` → `login(u,p,issuer,null)` → 4-arg (resolves issuer if null,
+maps null/blank IP to `unknown`, then runs the lockout-guarded provider call).
+
+**The client IP is NOT taken from the `SecurityContext`** (which is transport-agnostic — also populated by JAAS
+and internal calls). It is read at the REST boundary and passed explicitly. Extraction is **per-runtime** because
+the servlet namespaces differ:
+
+| Runtime | Source | Where |
+|---|---|---|
+| JAX-RS / CXF | `@Context javax.servlet.http.HttpServletRequest` | `AuthenticationRestControllerImpl.resolveClientIp()` |
+| Spring MVC | `RequestContextHolder` → `jakarta.servlet.http.HttpServletRequest` | `AuthenticationSpringRestControllerImpl.resolveClientIp()` (override) |
+
+Both delegate the trust decision to the pure helper `ClientIpResolver.resolve(trustedProxies, tcpSource, xff, xRealIp)`:
+`X-Forwarded-For` / `X-Real-IP` are honored **only** when the immediate TCP peer is in
+`water.authentication.trusted.proxies` (default empty → direct TCP source only). Coordinated with gateway #37.
+
+**Progressive backoff** (in `InMemoryLoginAttemptStore`): once the threshold is hit, the lock duration grows
+exponentially with a cap across repeated lockouts of the same key (`base × multiplier^n`, capped).
+`recordSuccess` clears the counter and resets the escalation. The store is bounded (stale-eviction + hard key
+cap) and per-JVM (multi-node → shared store, e.g. Redis).
+
+**Configuration:**
+```properties
+water.authentication.login.lockout.threshold=5
+water.authentication.login.lockout.window.millis=900000
+water.authentication.login.lockout.duration.millis=900000        # base lock
+water.authentication.login.lockout.max.keys=100000
+water.authentication.login.lockout.backoff.enabled=true
+water.authentication.login.lockout.backoff.multiplier=2
+water.authentication.login.lockout.max.duration.millis=3600000   # backoff cap
+water.authentication.trusted.proxies=                            # CSV, default empty
+```
+**`water.testMode=true` fully bypasses lockout** (the store is never consulted) so tests aren't tripped.
 
 ### AuthenticationRestApi (REST Endpoint)
 
@@ -829,6 +887,23 @@ Client                     REST Layer              Auth Module           User Mo
 9. Back in REST controller: `authenticationApi.generateToken(authenticable)`
 10. `JwtTokenService.generateJwtToken()` creates RSA256-signed JWT
 11. Token returned as `{"token": "eyJ..."}`
+
+---
+
+## 9-bis. Multitenancy — login gate, companyId claim, impersonation
+
+Company-based multitenancy (full design: `source/multitenancy-analysis-proposal.md`). Enabled issuer-side via `water.authentication.multitenant.enabled` (default false → single-tenant, backward compatible). The token carries the active company; downstream services read it from the claim (no per-request call to a Company service).
+
+**Login gate (in the AuthenticationProvider, NOT in Authentication core):**
+- Additive overload `AuthenticationProvider.login(username, password, Long companyId)` (default delegates to the 2-arg; providers ignoring tenancy are unaffected).
+- `AuthenticationSystemServiceImpl.login` calls the 3-arg only when MT is enabled; membership validation lives in `UserAuthenticationProvider` (User domain, module isolation): a normal user's requested `companyId` must be in its `UserCompany` membership (else `UnauthorizedException`), else the `primary`; an **admin is non-scoped** (`resolveActiveCompany` returns `null` → cross-tenant, for provisioning — admins enter a tenant only via impersonation).
+- The resolved company is set on the returned `Authenticable` (`WaterUser.setActiveCompanyId`) and emitted as the JWT claim `companyId` (`JWTConstants.JWT_CLAIM_COMPANY_ID`, `NimbusJwtTokenService.generateClaims`, ONLY when non-null → tokens without a company are byte-identical to legacy).
+
+**User-level impersonation:**
+- `AuthenticationProvider.impersonate(targetUsername, callerUsername, companyId)` (default throws `UnsupportedOperationException`); impl in `UserAuthenticationProvider`. `AuthenticationApi.impersonate(targetUsername, companyId)` (caller taken from `SecurityContext`), endpoint `POST /water/authentication/impersonate` (authenticated).
+- **Permission-gated** via `UserActions.IMPERSONATE` on `WaterUser` (admin by construction; a normal user only if granted — NOT a hardcoded `isAdmin()` check). Loads the target WITHOUT a password, sets the target's company/roles, and marks the token with claim `impersonatedBy=<caller>` (`JWT_CLAIM_IMPERSONATED_BY`) → surfaces as `SecurityContext.getImpersonatedBy()`/`isImpersonated()` (audit; the token is "not genuine"). Not MT-flag-gated; same TTL.
+
+**Claim plumbing:** `companyId`/`impersonatedBy` → `NimbusJwtTokenService.getPrincipals` → `UserPrincipal` (nullable fields) → `WaterAbstractSecurityContext` → `SecurityContext.getActiveCompanyId()`/`getImpersonatedBy()`. REST login takes an optional `@FormParam("companyId")` (JAX-RS) / `@RequestParam companyId` (Spring).
 
 ---
 
@@ -1479,29 +1554,29 @@ WaterUser changePassword(long userId, String oldPassword,
 
 ```java
 public static final String USER_OPT_REGISTRATION_ENABLED =
-    "it.water.user.registration.enabled";
+    "water.user.registration.enabled";
 public static final String USER_OPT_ACTIVATION_URL =
-    "it.water.user.activation.url";
+    "water.user.activation.url";
 public static final String USER_OPT_PASSWORD_RESET_URL =
-    "it.water.user.password.reset.url";
+    "water.user.password.reset.url";
 public static final String USER_OPT_DEFAULT_ADMIN_PWD =
-    "it.water.user.admin.default.password";
+    "water.user.admin.default.password";
 public static final String USER_OPT_PHYSICAL_DELETION_ENABLED =
-    "it.water.user.physical.deletion.enabled";
+    "water.user.physical.deletion.enabled";
 public static final String USER_OPT_REGISTRATION_EMAIL_TEMPLATE_NAME =
-    "it.water.user.registration.email.template.name";
+    "water.user.registration.email.template.name";
 ```
 
 ### UserOptions Interface & Implementation
 
 | Property | Method | Default | Description |
 |----------|--------|---------|-------------|
-| `it.water.user.registration.enabled` | `isRegistrationEnabled()` | `false` | Enable self-registration |
-| `it.water.user.activation.url` | `getUserActivationUrl()` | `localhost:8080/water/users/activation` | Activation link URL |
-| `it.water.user.password.reset.url` | `getPasswordResetUrl()` | `localhost:8080/water/users/password-reset` | Password reset URL |
-| `it.water.user.admin.default.password` | `defaultAdminPwd()` | `"admin"` | Default admin password |
-| `it.water.user.physical.deletion.enabled` | `isPhysicalDeletionEnabled()` | `false` | Physical vs logical delete |
-| `it.water.user.registration.email.template.name` | `getUserRegistrationEmailTemplateName()` | `null` | Custom email template |
+| `water.user.registration.enabled` | `isRegistrationEnabled()` | `false` | Enable self-registration |
+| `water.user.activation.url` | `getUserActivationUrl()` | `localhost:8080/water/users/activation` | Activation link URL |
+| `water.user.password.reset.url` | `getPasswordResetUrl()` | `localhost:8080/water/users/password-reset` | Password reset URL |
+| `water.user.admin.default.password` | `defaultAdminPwd()` | `"admin"` | Default admin password |
+| `water.user.physical.deletion.enabled` | `isPhysicalDeletionEnabled()` | `false` | Physical vs logical delete |
+| `water.user.registration.email.template.name` | `getUserRegistrationEmailTemplateName()` | `null` | Custom email template |
 
 ### Complete User Properties
 
@@ -1509,22 +1584,22 @@ public static final String USER_OPT_REGISTRATION_EMAIL_TEMPLATE_NAME =
 # water-application.properties
 
 # Enable user self-registration (default: false)
-it.water.user.registration.enabled=true
+water.user.registration.enabled=true
 
 # URL for user activation link in emails
-it.water.user.activation.url=https://myapp.com/activate
+water.user.activation.url=https://myapp.com/activate
 
 # URL for password reset link in emails
-it.water.user.password.reset.url=https://myapp.com/reset-password
+water.user.password.reset.url=https://myapp.com/reset-password
 
 # Default admin password (CHANGE IN PRODUCTION!)
-it.water.user.admin.default.password=MySecureAdminPwd1_.
+water.user.admin.default.password=MySecureAdminPwd1_.
 
 # Enable physical deletion instead of logical (default: false)
-it.water.user.physical.deletion.enabled=false
+water.user.physical.deletion.enabled=false
 
 # Custom email template name for registration emails
-it.water.user.registration.email.template.name=custom-registration-template
+water.user.registration.email.template.name=custom-registration-template
 ```
 
 ---
@@ -1827,7 +1902,7 @@ Feature: Login test
 
 2. **Change default admin password in production**
    ```properties
-   it.water.user.admin.default.password=YourStrongP@ssw0rd!
+   water.user.admin.default.password=YourStrongP@ssw0rd!
    ```
 
 3. **Use `@LoggedIn` on all non-public endpoints**
@@ -1863,7 +1938,7 @@ Feature: Login test
 
 8. **Enable registration only when needed**
    ```properties
-   it.water.user.registration.enabled=true  # Only if self-registration is required
+   water.user.registration.enabled=true  # Only if self-registration is required
    ```
 
 9. **Configure JWT duration appropriately for your use case**
@@ -2051,12 +2126,12 @@ ERROR: 401 on protected endpoint (with valid login)
 | `it.water.rest.security.jwt.jws.url` | `""` | Rest-security | If JWS=true |
 | `it.water.rest.security.jwt.encrypt` | `false` | Rest-security | No |
 | `it.water.rest.security.jwt.duration.millis` | `3600000` | Rest-security | No |
-| `it.water.user.registration.enabled` | `false` | User | No |
-| `it.water.user.activation.url` | `localhost:8080/...` | User | No |
-| `it.water.user.password.reset.url` | `localhost:8080/...` | User | No |
-| `it.water.user.admin.default.password` | `"admin"` | User | No |
-| `it.water.user.physical.deletion.enabled` | `false` | User | No |
-| `it.water.user.registration.email.template.name` | `null` | User | No |
+| `water.user.registration.enabled` | `false` | User | No |
+| `water.user.activation.url` | `localhost:8080/...` | User | No |
+| `water.user.password.reset.url` | `localhost:8080/...` | User | No |
+| `water.user.admin.default.password` | `"admin"` | User | No |
+| `water.user.physical.deletion.enabled` | `false` | User | No |
+| `water.user.registration.email.template.name` | `null` | User | No |
 
 ### Default Roles
 
